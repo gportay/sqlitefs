@@ -1,6 +1,6 @@
 /*
- *  Copyright (C) 2018 Savoir-Faire Linux Inc.
- *                2018 Gaël PORTAY
+ *  Copyright (C) 2018-2019 Gaël PORTAY
+ *                2018      Savoir-Faire Linux Inc.
  *
  *  SPDX-License-Identifier: LGPL-2.1
  */
@@ -290,8 +290,7 @@ static int sqlitefs_getattr(const char *path, struct stat *st)
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		errno = EINVAL;
-		return -1;
+		return -EINVAL;
 	}
 
 	snprintf(sql, sizeof(sql), "SELECT "
@@ -317,13 +316,11 @@ static int sqlitefs_getattr(const char *path, struct stat *st)
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
-		errno = EACCES;
-		return -1;
+		return -EACCES;
 	}
 
 	if (data.error) {
-		errno = data.error;
-		return -1;
+		return -data.error;
 	}
 
 	fprintstat(stderr, path, st);
@@ -353,8 +350,7 @@ int sqlitefs_read(const char *path, char *buf, size_t bufsize, off_t offset,
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		errno = EINVAL;
-		return -1;
+		return -EINVAL;
 	}
 
 	snprintf(sql, sizeof(sql),
@@ -440,8 +436,7 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		errno = EINVAL;
-		return -1;
+		return -EINVAL;
 	}
 
 	filler(buffer, ".", NULL, 0);
@@ -453,8 +448,7 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
-		errno = EACCES;
-		return -1;
+		return -EACCES;
 	}
 
 	return 0;
