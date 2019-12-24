@@ -477,8 +477,7 @@ static void *sqlitefs_init(struct fuse_conn_info *conn)
 
 	if (sqlite3_open("fs.db", &db)) {
 		fprintf(stderr, "sqlite3_open: %s\n", sqlite3_errmsg(db));
-		sqlite3_close(db);
-		return NULL;
+		goto error;
 	}
 
 	if (!exists) {
@@ -506,8 +505,7 @@ static void *sqlitefs_init(struct fuse_conn_info *conn)
 		if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 			fprintf(stderr, "sqlite3_exec: %s\n", e);
 			sqlite3_free(e);
-			sqlite3_close(db);
-			return NULL;
+			goto error;
 		}
 
 		memset(&st, 0, sizeof(struct stat));
@@ -522,26 +520,24 @@ static void *sqlitefs_init(struct fuse_conn_info *conn)
 		st.st_mtime = time(NULL);
 		st.st_ctime = time(NULL);
 
-		if (add_directory(db, "/", "/", &st)) {
-			sqlite3_close(db);
-			return NULL;
-		}
+		if (add_directory(db, "/", "/", &st))
+			goto error;
 
-		if (add_directory(db, "/.Trash", "/", &st)) {
-			sqlite3_close(db);
-			return NULL;
-		}
+		if (add_directory(db, "/.Trash", "/", &st))
+			goto error;
 
 		st.st_mode = S_IFREG | 0644;
 		st.st_nlink = 1;
 		if (add_file(db, "/autorun.inf", "/",
-			     __data("[autorun]\nlabel=sqlitefs\n"), &st)) {
-			sqlite3_close(db);
-			return NULL;
-		}
+			     __data("[autorun]\nlabel=sqlitefs\n"), &st))
+			goto error;
 	}
 
 	return db;
+
+error:
+	sqlite3_close(db);
+	return NULL;
 }
 
 /**
