@@ -200,6 +200,7 @@ static int add_file(sqlite3 *db, const char *file, const char *parent,
 		    const void *data, size_t datasize, const struct stat *st)
 {
 	char sql[BUFSIZ];
+	int ret = -EIO;
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
 		 "data, st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, "
@@ -237,11 +238,12 @@ static int add_file(sqlite3 *db, const char *file, const char *parent,
 			continue;
 		}
 
+		ret = 0;
 		break;
 	}
 
 exit:
-	return 0;
+	return ret;
 }
 
 static int add_directory(sqlite3 *db, const char *file, const char *parent,
@@ -264,7 +266,7 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
-		return 1;
+		return -EIO;
 	}
 
 	return 0;
@@ -315,7 +317,7 @@ static int sqlitefs_getattr(const char *path, struct stat *st)
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
-		return -EACCES;
+		return -EIO;
 	}
 
 	if (data.error) {
