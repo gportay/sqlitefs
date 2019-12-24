@@ -29,7 +29,7 @@ no-mount-tests:
 
 .PHONY: mount
 mount: sqlitefs | mountpoint
-	@echo "Note: You can run \$ cat mountpoint/autorun.ini"
+	@echo "Note: You can run \$$ cat mountpoint/autorun.ini"
 	./sqlitefs -o nonempty -f mountpoint
 
 .PHONY: umount
