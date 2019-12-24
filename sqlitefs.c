@@ -197,7 +197,7 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 }
 
 static int add_file(sqlite3 *db, const char *file, const char *parent,
-		    void *data, size_t datasize, const struct stat *st)
+		    const void *data, size_t datasize, const struct stat *st)
 {
 	char sql[BUFSIZ];
 
