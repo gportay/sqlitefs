@@ -148,7 +148,6 @@ static int getattr_cb(void *data, int argc, char **argv, char **colname)
 	struct getattr_data *pdata = (struct getattr_data *)data;
 	int i;
 	(void)argc;
-	(void)argv;
 	(void)colname;
 
 	i = 1;
@@ -345,7 +344,6 @@ int sqlitefs_read(const char *path, char *buf, size_t bufsize, off_t offset,
 	sqlite3 *db = fuse_get_context()->private_data;
 	char sql[BUFSIZ];
 	int size = 0;
-	(void)bufsize;
 	(void)fi;
 
 	if (!db) {
