@@ -209,7 +209,7 @@ static int add_file(sqlite3 *db, const char *file, const char *parent,
 		 "VALUES(\"%s\", \"%s\", ?, %lu, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
 		 file, parent, st->st_dev, st->st_ino, st->st_mode,
-		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, st->st_size,
+		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, data ? datasize : 0,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
 		 st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
@@ -532,7 +532,6 @@ static void *sqlitefs_init(struct fuse_conn_info *conn)
 
 		st.st_mode = S_IFREG | 0644;
 		st.st_nlink = 1;
-		st.st_size = 1024;
 		if (add_file(db, "/autorun.inf", "/",
 			     __data("[autorun]\nlabel=sqlitefs\n"), &st)) {
 			sqlite3_close(db);
