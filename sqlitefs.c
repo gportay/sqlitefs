@@ -272,6 +272,29 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 	return 0;
 }
 
+/**
+ * The file system operations:
+ *
+ * Most of these should work very similarly to the well known UNIX
+ * file system operations.  A major exception is that instead of
+ * returning an error in 'errno', the operation should return the
+ * negated error value (-errno) directly.
+ *
+ * All methods are optional, but some are essential for a useful
+ * filesystem (e.g. getattr).  Open, flush, release, fsync, opendir,
+ * releasedir, fsyncdir, access, create, ftruncate, fgetattr, lock,
+ * init and destroy are special purpose methods, without which a full
+ * featured filesystem can still be implemented.
+ *
+ * Almost all operations take a path which can be of any length.
+ *
+ * Changed in fuse 2.8.0 (regardless of API version)
+ * Previously, paths were limited to a length of PATH_MAX.
+ *
+ * See http://fuse.sourceforge.net/wiki/ for more information.  There
+ * is also a snapshot of the relevant wiki pages in the doc/ folder.
+ */
+
 /** Get file attributes.
  *
  * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
