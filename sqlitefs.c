@@ -22,6 +22,7 @@ const char VERSION[] = __DATE__ " " __TIME__;
 #include <pwd.h>
 #include <grp.h>
 
+#include <libgen.h>
 #include <fuse.h>
 #include <sqlite3.h>
 
@@ -32,6 +33,18 @@ const char VERSION[] = __DATE__ " " __TIME__;
 	__typeof__ (b) _b = (b); \
 	_a < _b ? _a : _b; \
 })
+
+#define __strncmp(s1, s2) strncmp(s1, s2, sizeof(s2) - 1)
+
+#define __return_perror(s, e) do { \
+	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
+	return -e; \
+} while (0)
+
+#define __exit_perror(s, e) do {\
+	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
+	exit(EXIT_FAILURE); \
+} while (0)
 
 #define __data(s) s, sizeof(s) - 1
 
@@ -272,6 +285,81 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 	return 0;
 }
 
+static int mkfs(const char *path)
+{
+	char sql[BUFSIZ];
+	struct stat st;
+	sqlite3 *db;
+	int exists;
+	char *e;
+
+	exists = stat(path, &st) == 0;
+	if (exists)
+		return -EEXIST;
+
+	if (sqlite3_open(path, &db)) {
+		fprintf(stderr, "sqlite3_open: %s\n", sqlite3_errmsg(db));
+		goto error;
+	}
+
+	snprintf(sql, sizeof(sql),
+		 "CREATE TABLE IF NOT EXISTS files("
+				"path TEXT NOT NULL PRIMARY KEY, "
+				"parent TEXT NOT NULL, "
+				"data BLOB, "
+				"st_dev INT(8), "
+				"st_ino INT(8), "
+				"st_mode INT(4), "
+				"st_nlink INT(8), "
+				"st_uid INT(4), "
+				"st_gid INT(4), "
+				"st_rdev INT(8), "
+				"st_size INT(8), "
+				"st_blksize INT(8), "
+				"st_blocks INT(8), "
+				"st_atim_sec INT(8), "
+				"st_atim_nsec INT(8), "
+				"st_mtim_sec INT(8), "
+				"st_mtim_nsec INT(8), "
+				"st_ctim_sec INT(8), "
+				"st_ctim_nsec INT(8));");
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto error;
+	}
+
+	memset(&st, 0, sizeof(struct stat));
+	/* Ignored st.st_dev = 0; */
+	/* Ignored st.st_ino = 0; */
+	st.st_mode = S_IFDIR | 0755;
+	st.st_nlink = 2;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	/* Ignored st.st_blksize = 0; */
+	st.st_atime = time(NULL);
+	st.st_mtime = time(NULL);
+	st.st_ctime = time(NULL);
+
+	if (add_directory(db, "/", "/", &st))
+		goto error;
+
+	if (add_directory(db, "/.Trash", "/", &st))
+		goto error;
+
+	st.st_mode = S_IFREG | 0644;
+	st.st_nlink = 1;
+	if (add_file(db, "/autorun.inf", "/",
+		     __data("[autorun]\nlabel=sqlitefs\n"), &st))
+		goto error;
+
+	return 0;
+
+error:
+	sqlite3_close(db);
+	return -EIO;
+}
+
 /**
  * The file system operations:
  *
@@ -487,81 +575,7 @@ static int sqlitefs_readdir(const char *path, void *buffer,
  * Introduced in version 2.3
  * Changed in version 2.6
  */
-static void *sqlitefs_init(struct fuse_conn_info *conn)
-{
-	char sql[BUFSIZ];
-	struct stat st;
-	sqlite3 *db;
-	int exists;
-	char *e;
-	(void)conn;
-
-	exists = stat("fs.db", &st) == 0;
-
-	if (sqlite3_open("fs.db", &db)) {
-		fprintf(stderr, "sqlite3_open: %s\n", sqlite3_errmsg(db));
-		goto error;
-	}
-
-	if (!exists) {
-		snprintf(sql, sizeof(sql),
-		       "CREATE TABLE IF NOT EXISTS files("
-				"path TEXT NOT NULL PRIMARY KEY, "
-				"parent TEXT NOT NULL, "
-				"data BLOB, "
-				"st_dev INT(8), "
-				"st_ino INT(8), "
-				"st_mode INT(4), "
-				"st_nlink INT(8), "
-				"st_uid INT(4), "
-				"st_gid INT(4), "
-				"st_rdev INT(8), "
-				"st_size INT(8), "
-				"st_blksize INT(8), "
-				"st_blocks INT(8), "
-				"st_atim_sec INT(8), "
-				"st_atim_nsec INT(8), "
-				"st_mtim_sec INT(8), "
-				"st_mtim_nsec INT(8), "
-				"st_ctim_sec INT(8), "
-				"st_ctim_nsec INT(8));");
-		if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-			fprintf(stderr, "sqlite3_exec: %s\n", e);
-			sqlite3_free(e);
-			goto error;
-		}
-
-		memset(&st, 0, sizeof(struct stat));
-		/* Ignored st.st_dev = 0; */
-		/* Ignored st.st_ino = 0; */
-		st.st_mode = S_IFDIR | 0755;
-		st.st_nlink = 2;
-		st.st_uid = getuid();
-		st.st_gid = getgid();
-		/* Ignored st.st_blksize = 0; */
-		st.st_atime = time(NULL);
-		st.st_mtime = time(NULL);
-		st.st_ctime = time(NULL);
-
-		if (add_directory(db, "/", "/", &st))
-			goto error;
-
-		if (add_directory(db, "/.Trash", "/", &st))
-			goto error;
-
-		st.st_mode = S_IFREG | 0644;
-		st.st_nlink = 1;
-		if (add_file(db, "/autorun.inf", "/",
-			     __data("[autorun]\nlabel=sqlitefs\n"), &st))
-			goto error;
-	}
-
-	return db;
-
-error:
-	sqlite3_close(db);
-	return NULL;
-}
+/* void *(*init) (struct fuse_conn_info *conn); */
 
 /**
  * Clean up filesystem
@@ -586,11 +600,26 @@ static struct fuse_operations operations = {
 	.getattr = sqlitefs_getattr,
 	.read = sqlitefs_read,
 	.readdir = sqlitefs_readdir,
-	.init = sqlitefs_init,
 	.destroy = sqlitefs_destroy,
 };
 
 int main(int argc, char *argv[])
 {
-	return fuse_main(argc, argv, &operations, NULL);
+	sqlite3 *db;
+
+	if (__strncmp(basename(argv[0]), "mkfs.sqlitefs") == 0) {
+		int err = mkfs("fs.db");
+		if (err)
+			__exit_perror("fs.db", -err);
+
+		return EXIT_SUCCESS;
+	}
+
+	if (sqlite3_open_v2("fs.db", &db, SQLITE_OPEN_READWRITE, NULL)) {
+		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
+		sqlite3_close(db);
+		__exit_perror("fs.db", EIO);
+	}
+
+	return fuse_main(argc, argv, &operations, db);
 }
