@@ -22,6 +22,10 @@ fs.db: | mkfs.sqlitefs
 mountpoint:
 	mkdir -p $@
 
+.PHONY: ci
+ci: export EXIT_ON_ERROR = 1
+ci: tests
+
 .PHONY: tests
 tests: sqlitefs fs.db
 	if ! bash tests.bash; then \
