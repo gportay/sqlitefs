@@ -123,7 +123,7 @@ if touch mountpoint/touched &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 

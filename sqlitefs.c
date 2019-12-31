@@ -476,17 +476,28 @@ static int sqlitefs_readlink(const char *path, char *buf, size_t len)
 static int sqlitefs_mknod(const char *path, mode_t mode, dev_t rdev)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(path: %s, mode: %x, rdev: %li)\n", __FUNCTION__,
-		path, mode, rdev);
+	struct stat st;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
 		return -EINVAL;
 	}
 
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	memset(&st, 0, sizeof(struct stat));
+	st.st_dev = rdev;
+	/* Ignored st.st_ino = 0; */
+	st.st_mode = mode;
+	st.st_nlink = 1;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	/* Ignored st.st_blksize = 0; */
+	st.st_atime = time(NULL);
+	st.st_mtime = time(NULL);
+	st.st_ctime = time(NULL);
+	if (add_file(db, path, "/", NULL, 0, &st))
+		return -EIO;
+
+	return 0;
 }
 
 /** Create a directory
@@ -1090,18 +1101,30 @@ static int sqlitefs_lock(const char *path, struct fuse_file_info *fi, int cmd,
 static int sqlitefs_utimens(const char *path, const struct timespec tv[2])
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	char buf[BUFSIZ];
-
-	fprintf(stderr, "%s(path: %s, tv: '%s')\n", __FUNCTION__, path,
-		timespec_r(tv, buf, sizeof(buf)));
+	char sql[BUFSIZ];
+	char *e;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
 		return -EINVAL;
 	}
 
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_mtim_sec=%lu, "
+					"st_mtim_nsec=%lu, "
+					"st_ctim_sec=%lu, "
+					"st_ctim_nsec=%lu "
+				   "WHERE path=\"%s\";",
+		 tv[0].tv_sec, tv[0].tv_nsec, tv[1].tv_sec, tv[1].tv_nsec,
+		 path);
+
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 /**
