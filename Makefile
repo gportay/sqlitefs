@@ -52,3 +52,7 @@ umount:
 clean:
 	rm -f sqlitefs mkfs.sqlitefs fs.db failed.db
 
+PREPROCESS.c = $(CC) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -E
+%.i: %.c
+	$(PREPROCESS.c) $(OUTPUT_OPTION) $<
+
