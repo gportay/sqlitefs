@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019 Gaël PORTAY
+ *  Copyright (C) 2018-2020 Gaël PORTAY
  *                2018      Savoir-Faire Linux Inc.
  *
  *  SPDX-License-Identifier: LGPL-2.1
@@ -440,6 +440,246 @@ static int sqlitefs_getattr(const char *path, struct stat *st)
 	return 0;
 }
 
+/** Read the target of a symbolic link
+ *
+ * The buffer should be filled with a null terminated string.  The
+ * buffer size argument includes the space for the terminating
+ * null character.	If the linkname is too long to fit in the
+ * buffer, it should be truncated.	The return value should be 0
+ * for success.
+ */
+static int sqlitefs_readlink(const char *path, char *buf, size_t len)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, buf: %p, len: %lu)\n", __FUNCTION__,
+		path, buf, len);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/* Deprecated, use readdir() instead */
+/* int (*getdir) (const char *, fuse_dirh_t, fuse_dirfil_t); */
+
+/** Create a file node
+ *
+ * This is called for creation of all non-directory, non-symlink
+ * nodes.  If the filesystem defines a create() method, then for
+ * regular files that will be called instead.
+ */
+static int sqlitefs_mknod(const char *path, mode_t mode, dev_t rdev)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, mode: %x, rdev: %li)\n", __FUNCTION__,
+		path, mode, rdev);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Create a directory
+ *
+ * Note that the mode argument may not have the type specification
+ * bits set, i.e. S_ISDIR(mode) can be false.  To obtain the
+ * correct directory type bits use  mode|S_IFDIR
+ */
+static int sqlitefs_mkdir(const char *path, mode_t mode)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, mode: %x)\n", __FUNCTION__, path, mode);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Remove a file */
+static int sqlitefs_unlink(const char *path)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s)\n", __FUNCTION__, path);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Remove a directory */
+static int sqlitefs_rmdir(const char *path)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s)\n", __FUNCTION__, path);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Rename a file */
+static int sqlitefs_rename(const char *oldpath, const char *newpath)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(oldpath: %s, newpath: %s)\n", __FUNCTION__,
+		oldpath, newpath);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Create a hard link to a file */
+static int sqlitefs_link(const char *oldpath, const char *newpath)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(oldpath: %s, newpath: %s)\n", __FUNCTION__,
+		oldpath, newpath);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Create a symbolic link */
+static int sqlitefs_symlink(const char *linkname, const char *path)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(linkname: %s, path: %s)\n", __FUNCTION__, linkname,
+		path);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Change the permission bits of a file */
+static int sqlitefs_chmod(const char *path, mode_t mode)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, mode: %x)\n", __FUNCTION__, path, mode);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Change the owner and group of a file */
+static int sqlitefs_chown(const char *path, uid_t uid, gid_t gid)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, uid: %i, gid: %i)\n", __FUNCTION__, path,
+		uid, gid);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Change the size of a file */
+static int sqlitefs_truncate(const char *path, off_t size)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, size: %li)\n", __FUNCTION__, path, size);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Change the access and/or modification times of a file
+ *
+ * Deprecated, use utimens() instead.
+ */
+/* int (*utime) (const char *, struct utimbuf *); */
+
+/** File open operation
+ *
+ * No creation (O_CREAT, O_EXCL) and by default also no
+ * truncation (O_TRUNC) flags will be passed to open(). If an
+ * application specifies O_TRUNC, fuse first calls truncate()
+ * and then open(). Only if 'atomic_o_trunc' has been
+ * specified and kernel version is 2.6.24 or later, O_TRUNC is
+ * passed on to open.
+ *
+ * Unless the 'default_permissions' mount option is given,
+ * open should check if the operation is permitted for the
+ * given flags. Optionally open may also return an arbitrary
+ * filehandle in the fuse_file_info structure, which will be
+ * passed to all file operations.
+ *
+ * Changed in version 2.2
+ */
+static int sqlitefs_open(const char *path, struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, fi: %p)\n",__FUNCTION__, path, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
 /** Read data from an open file
  *
  * Read should return exactly the number of bytes requested except
@@ -506,6 +746,84 @@ int sqlitefs_read(const char *path, char *buf, size_t bufsize, off_t offset,
 
 exit:
 	return size;
+}
+
+/** Write data to an open file
+ *
+ * Write should return exactly the number of bytes requested
+ * except on error.	 An exception to this is when the 'direct_io'
+ * mount option is specified (see read operation).
+ *
+ * Changed in version 2.2
+ */
+static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
+			  off_t off, struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, buf: %p, bufsize: %lu, off: %li, fi: %p)\n",
+		__FUNCTION__, path, buf, bufsize, off, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Release an open file
+ *
+ * Release is called when there are no more references to an open
+ * file: all file descriptors are closed and all memory mappings
+ * are unmapped.
+ *
+ * For every open() call there will be exactly one release() call
+ * with the same flags and file descriptor.	 It is possible to
+ * have a file opened more than once, in which case only the last
+ * release will mean, that no more reads/writes will happen on the
+ * file.  The return value of release is ignored.
+ *
+ * Changed in version 2.2
+ */
+static int sqlitefs_release(const char *path, struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, fi: %p)\n",__FUNCTION__, path, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/** Synchronize file contents
+ *
+ * If the datasync parameter is non-zero, then only the user data
+ * should be flushed, not the meta data.
+ *
+ * Changed in version 2.2
+ */
+static int sqlitefs_fsync(const char *path, int datasync,
+			  struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, datasync: %i, fi: %p)\n", __FUNCTION__,
+		path, datasync, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
 }
 
 /** Read directory
@@ -596,11 +914,389 @@ static void sqlitefs_destroy(void *ptr)
 	sqlite3_close(db);
 }
 
+/**
+ * Check file access permissions
+ *
+ * This will be called for the access() system call.  If the
+ * 'default_permissions' mount option is given, this method is not
+ * called.
+ *
+ * This method is not called under Linux kernel versions 2.4.x
+ *
+ * Introduced in version 2.5
+ */
+static int sqlitefs_access(const char *path, int mask)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, mask: %i)\n", __FUNCTION__, path, mask);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Create and open a file
+ *
+ * If the file does not exist, first create it with the specified
+ * mode, and then open it.
+ *
+ * If this method is not implemented or under Linux kernel
+ * versions earlier than 2.6.15, the mknod() and open() methods
+ * will be called instead.
+ *
+ * Introduced in version 2.5
+ */
+static int sqlitefs_create(const char *path, mode_t mode,
+			   struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, mode: %i, fi: %p)\n", __FUNCTION__, path,
+		mode, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Change the size of an open file
+ *
+ * This method is called instead of the truncate() method if the
+ * truncation was invoked from an ftruncate() system call.
+ *
+ * If this method is not implemented or under Linux kernel
+ * versions earlier than 2.6.15, the truncate() method will be
+ * called instead.
+ *
+ * Introduced in version 2.5
+ */
+static int sqlitefs_ftruncate(const char *path, off_t off,
+			      struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, off: %li, fi: %p)\n", __FUNCTION__, path,
+		off, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Get attributes from an open file
+ *
+ * This method is called instead of the getattr() method if the
+ * file information is available.
+ *
+ * Currently this is only called after the create() method if that
+ * is implemented (see above).  Later it may be called for
+ * invocations of fstat() too.
+ *
+ * Introduced in version 2.5
+ */
+static int sqlitefs_fgetattr(const char *path, struct stat *buf,
+			     struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, buf: %p, fi: %p)\n", __FUNCTION__, path,
+		buf, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Perform POSIX file locking operation
+ *
+ * The cmd argument will be either F_GETLK, F_SETLK or F_SETLKW.
+ *
+ * For the meaning of fields in 'struct flock' see the man page
+ * for fcntl(2).  The l_whence field will always be set to
+ * SEEK_SET.
+ *
+ * For checking lock ownership, the 'fuse_file_info->owner'
+ * argument must be used.
+ *
+ * For F_GETLK operation, the library will first check currently
+ * held locks, and if a conflicting lock is found it will return
+ * information without calling this method.	 This ensures, that
+ * for local locks the l_pid field is correctly filled in.	The
+ * results may not be accurate in case of race conditions and in
+ * the presence of hard links, but it's unlikely that an
+ * application would rely on accurate GETLK results in these
+ * cases.  If a conflicting lock is not found, this method will be
+ * called, and the filesystem may fill out l_pid by a meaningful
+ * value, or it may leave this field zero.
+ *
+ * For F_SETLK and F_SETLKW the l_pid field will be set to the pid
+ * of the process performing the locking operation.
+ *
+ * Note: if this method is not implemented, the kernel will still
+ * allow file locking to work locally.  Hence it is only
+ * interesting for network filesystems and similar.
+ *
+ * Introduced in version 2.6
+ */
+static int sqlitefs_lock(const char *path, struct fuse_file_info *fi, int cmd,
+			 struct flock *lock)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, fi: %p, cmd: %i, lock: %p)\n",
+		__FUNCTION__, path, fi, cmd, lock);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Change the access and modification times of a file with
+ * nanosecond resolution
+ *
+ * This supersedes the old utime() interface.  New applications
+ * should use this.
+ *
+ * See the utimensat(2) man page for details.
+ *
+ * Introduced in version 2.6
+ */
+static int sqlitefs_utimens(const char *path, const struct timespec tv[2])
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+	char buf[BUFSIZ];
+
+	fprintf(stderr, "%s(path: %s, tv: '%s')\n", __FUNCTION__, path,
+		timespec_r(tv, buf, sizeof(buf)));
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Map block index within file to block index within device
+ *
+ * Note: This makes sense only for block device backed filesystems
+ * mounted with the 'blkdev' option
+ *
+ * Introduced in version 2.6
+ */
+static int sqlitefs_bmap(const char *path, size_t blocksize, uint64_t *idx)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, blocksize: %lu, idx: %p)\n", __FUNCTION__,
+		path, blocksize, idx);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Ioctl
+ *
+ * flags will have FUSE_IOCTL_COMPAT set for 32bit ioctls in
+ * 64bit environment.  The size and direction of data is
+ * determined by _IOC_*() decoding of cmd.  For _IOC_NONE,
+ * data will be NULL, for _IOC_WRITE data is out area, for
+ * _IOC_READ in area and if both are set in/out area.  In all
+ * non-NULL cases, the area is of _IOC_SIZE(cmd) bytes.
+ *
+ * If flags has FUSE_IOCTL_DIR then the fuse_file_info refers to a
+ * directory file handle.
+ *
+ * Introduced in version 2.8
+ */
+static int sqlitefs_ioctl(const char *path, int cmd, void *arg,
+			  struct fuse_file_info *fi, unsigned int flags,
+			  void *data)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, cmd: %i, arg: %p, fi: %p, flags: %u, data: %p)\n",
+		__FUNCTION__, path, cmd, arg, fi, flags, data);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Poll for IO readiness events
+ *
+ * Note: If ph is non-NULL, the client should notify
+ * when IO readiness events occur by calling
+ * fuse_notify_poll() with the specified ph.
+ *
+ * Regardless of the number of times poll with a non-NULL ph
+ * is received, single notification is enough to clear all.
+ * Notifying more times incurs overhead but doesn't harm
+ * correctness.
+ *
+ * The callee is responsible for destroying ph with
+ * fuse_pollhandle_destroy() when no longer in use.
+ *
+ * Introduced in version 2.8
+ */
+static int sqlitefs_poll(const char *path, struct fuse_file_info *fi,
+			 struct fuse_pollhandle *ph, unsigned *reventsp)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, fi: %p, ph: %p, reventsp: %p)\n",
+		__FUNCTION__, path, fi, ph, reventsp);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Perform BSD file locking operation
+ *
+ * The op argument will be either LOCK_SH, LOCK_EX or LOCK_UN
+ *
+ * Nonblocking requests will be indicated by ORing LOCK_NB to
+ * the above operations
+ *
+ * For more information see the flock(2) manual page.
+ *
+ * Additionally fi->owner will be set to a value unique to
+ * this open file.  This same value will be supplied to
+ * ->release() when the file is released.
+ *
+ * Note: if this method is not implemented, the kernel will still
+ * allow file locking to work locally.  Hence it is only
+ * interesting for network filesystems and similar.
+ *
+ * Introduced in version 2.9
+ */
+static int sqlitefs_flock(const char *path, struct fuse_file_info *fi, int op)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, fi: %p, op: %i)\n", __FUNCTION__, path,
+		fi, op);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
+/**
+ * Allocates space for an open file
+ *
+ * This function ensures that required space is allocated for specified
+ * file.  If this function returns success then any subsequent write
+ * request to specified range is guaranteed not to fail because of lack
+ * of space on the file system media.
+ *
+ * Introduced in version 2.9.1
+ */
+static int sqlitefs_fallocate(const char *path, int mode, off_t off, off_t len,
+			      struct fuse_file_info *fi)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	fprintf(stderr, "%s(path: %s, mode: %x, off: %li, len: %li, fi: %p)\n",
+		__FUNCTION__, path, mode, off, len, fi);
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
+	return -ENOSYS;
+}
+
 static struct fuse_operations operations = {
 	.getattr = sqlitefs_getattr,
+	.readlink = sqlitefs_readlink,
+	/* .getdir */
+	.mknod = sqlitefs_mknod,
+	.mkdir = sqlitefs_mkdir,
+	.unlink = sqlitefs_unlink,
+	.rmdir = sqlitefs_rmdir,
+	.symlink = sqlitefs_symlink,
+	.rename = sqlitefs_rename,
+	.link = sqlitefs_link,
+	.chmod = sqlitefs_chmod,
+	.chown = sqlitefs_chown,
+	.truncate = sqlitefs_truncate,
+	/* .utime */
+	.open = sqlitefs_open,
 	.read = sqlitefs_read,
+	.write = sqlitefs_write,
+	.release = sqlitefs_release,
+	.fsync = sqlitefs_fsync,
+	/* .opendir */
 	.readdir = sqlitefs_readdir,
+	/* .releasedir */
+	/* .fsyncdir */
+	/* .init */
 	.destroy = sqlitefs_destroy,
+	.access = sqlitefs_access,
+	.create = sqlitefs_create,
+	.ftruncate = sqlitefs_ftruncate,
+	.fgetattr = sqlitefs_fgetattr,
+	.lock = sqlitefs_lock,
+	.utimens = sqlitefs_utimens,
+	.bmap = sqlitefs_bmap,
+	.ioctl = sqlitefs_ioctl,
+	.poll = sqlitefs_poll,
+	/* .write_buf */
+	/* .read_buf */
+	.flock = sqlitefs_flock,
+	.fallocate = sqlitefs_fallocate,
 };
 
 int main(int argc, char *argv[])
