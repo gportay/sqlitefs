@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2018-2019 Gaël PORTAY
+#  Copyright (C) 2018-2020 Gaël PORTAY
 #                2018      Savoir-Faire Linux Inc.
 #
 #  SPDX-License-Identifier: LGPL-2.1
@@ -42,7 +42,7 @@ no-mount-tests: fs.db
 .PHONY: mount
 mount: sqlitefs | mountpoint fs.db
 	@echo "Note: You can run \$$ cat mountpoint/autorun.inf"
-	./sqlitefs -o nonempty -f mountpoint
+	./sqlitefs -o nonempty -d mountpoint
 
 .PHONY: umount
 umount:
