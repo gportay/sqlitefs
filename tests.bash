@@ -136,7 +136,7 @@ if fakeroot -- /bin/sh -c '
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 

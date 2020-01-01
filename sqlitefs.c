@@ -624,17 +624,26 @@ static int sqlitefs_chmod(const char *path, mode_t mode)
 static int sqlitefs_chown(const char *path, uid_t uid, gid_t gid)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(path: %s, uid: %i, gid: %i)\n", __FUNCTION__, path,
-		uid, gid);
+	char sql[BUFSIZ];
+	char *e;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
 		return -EINVAL;
 	}
 
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_uid=%u, "
+					"st_gid=%u "
+				   "WHERE path=\"%s\";",
+		 uid, gid, path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 /** Change the size of a file */
