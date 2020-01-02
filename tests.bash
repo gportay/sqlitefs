@@ -209,7 +209,7 @@ if mkdir -p mountpoint/dir &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 

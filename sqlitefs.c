@@ -466,6 +466,28 @@ exit:
 	return bufsize;
 }
 
+static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
+{
+	struct stat st;
+
+	if (!db || !path)
+		return -EINVAL;
+
+	memset(&st, 0, sizeof(struct stat));
+	/* Ignored st.st_dev = 0; */
+	/* Ignored st.st_ino = 0; */
+	st.st_mode = S_IFDIR | mode;
+	st.st_nlink = 2;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	/* Ignored st.st_blksize = 0; */
+	st.st_atime = time(NULL);
+	st.st_mtime = time(NULL);
+	st.st_ctime = time(NULL);
+
+	return add_directory(db, path, "/", &st);
+}
+
 static int mkfs(const char *path)
 {
 	char sql[BUFSIZ];
@@ -510,26 +532,23 @@ static int mkfs(const char *path)
 		goto error;
 	}
 
+	if (__mkdir(db, "/", 0755))
+		goto error;
+
+	if (__mkdir(db, "/.Trash", 0755))
+		goto error;
+
 	memset(&st, 0, sizeof(struct stat));
 	/* Ignored st.st_dev = 0; */
 	/* Ignored st.st_ino = 0; */
-	st.st_mode = S_IFDIR | 0755;
-	st.st_nlink = 2;
+	st.st_mode = S_IFREG | 0644;
+	st.st_nlink = 1;
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
 	st.st_atime = time(NULL);
 	st.st_mtime = time(NULL);
 	st.st_ctime = time(NULL);
-
-	if (add_directory(db, "/", "/", &st))
-		goto error;
-
-	if (add_directory(db, "/.Trash", "/", &st))
-		goto error;
-
-	st.st_mode = S_IFREG | 0644;
-	st.st_nlink = 1;
 	if (add_file(db, "/autorun.inf", "/",
 		     __data("[autorun]\nlabel=sqlitefs\n"), &st))
 		goto error;
@@ -645,15 +664,7 @@ static int sqlitefs_mkdir(const char *path, mode_t mode)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
-	fprintf(stderr, "%s(path: %s, mode: %x)\n", __FUNCTION__, path, mode);
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	return __mkdir(db, path, mode);
 }
 
 /** Remove a file */
