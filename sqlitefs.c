@@ -608,16 +608,25 @@ static int sqlitefs_symlink(const char *linkname, const char *path)
 static int sqlitefs_chmod(const char *path, mode_t mode)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(path: %s, mode: %x)\n", __FUNCTION__, path, mode);
+	char sql[BUFSIZ];
+	char *e;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
 		return -EINVAL;
 	}
 
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_mode=%u "
+				   "WHERE path=\"%s\";",
+		 mode, path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 /** Change the owner and group of a file */

@@ -147,7 +147,7 @@ if chmod 664 mountpoint/touched &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
