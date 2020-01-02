@@ -118,8 +118,8 @@ fi
 echo
 
 run "Touch file"
-if touch mountpoint/touched &&
-   test -e mountpoint/touched
+if touch mountpoint/tmp.sh &&
+   test -e mountpoint/tmp.sh
 then
 	ok
 else
@@ -129,8 +129,8 @@ echo
 
 run "Change ownership"
 if fakeroot -- /bin/sh -c '
-   chown root:root mountpoint/touched &&
-   stat --printf="%U:%G\n" mountpoint/touched | tee /dev/stderr |
+   chown root:root mountpoint/tmp.sh  &&
+   stat --printf="%U:%G\n" mountpoint/tmp.sh | tee /dev/stderr |
    grep -q "^root:root\$"
    '
 then
@@ -141,9 +141,9 @@ fi
 echo
 
 run "Change mode"
-if chmod 664 mountpoint/touched &&
-   stat --printf="%a\n" mountpoint/touched | tee /dev/stderr |
-   grep -q '^664$'
+if chmod 755 mountpoint/tmp.sh &&
+   stat --printf="%a\n" mountpoint/tmp.sh | tee /dev/stderr |
+   grep -q '^755$'
 then
 	ok
 else
@@ -152,8 +152,8 @@ fi
 echo
 
 run "Echo in file"
-if echo "#!/bin/sh" >mountpoint/touched &&
-   cat mountpoint/touched | tee /dev/stderr | md5sum | tee /dev/stderr |
+if echo "#!/bin/sh" >mountpoint/tmp.sh &&
+   cat mountpoint/tmp.sh | tee /dev/stderr | md5sum | tee /dev/stderr |
    grep -q '^3e2b31c72181b87149ff995e7202c0e3  -$'
 then
 	ok
@@ -163,9 +163,9 @@ fi
 echo
 
 run "Echo in file (append)"
-if echo "echo 'Hello, World'" >>mountpoint/touched &&
-   cat mountpoint/touched | tee /dev/stderr | md5sum | tee /dev/stderr |
-   grep -q '^b4761d5b6f38ccd3eb9468f96e1a97b1  -$'
+if echo "echo 'Hello, World!'" >>mountpoint/tmp.sh &&
+   cat mountpoint/tmp.sh | tee /dev/stderr | md5sum | tee /dev/stderr |
+   grep -q '^afe98cfb03203f86864ac600228e28b3  -$'
 then
 	ok
 else
@@ -174,9 +174,9 @@ fi
 echo
 
 run "Move file"
-if mv mountpoint/touched mountpoint/echoed &&
-   ! test -e mountpoint/touched &&
-   test -e mountpoint/echoed
+if mv mountpoint/tmp.sh mountpoint/hello-world.sh &&
+   ! test -e mountpoint/tmp.sh &&
+   test -e mountpoint/hello-world.sh
 then
 	ok
 else
@@ -185,8 +185,8 @@ fi
 echo
 
 run "Remove file"
-if rm mountpoint/echoed &&
-   ! test -e mountpoint/echoed
+if rm mountpoint/hello-world.sh &&
+   ! test -e mountpoint/hello-world.sh
 then
 	ok
 else
