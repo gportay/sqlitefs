@@ -219,7 +219,7 @@ if rmdir mountpoint/dir &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
