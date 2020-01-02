@@ -152,9 +152,20 @@ fi
 echo
 
 run "Echo in file"
-if echo "Hello, World" >mountpoint/touched &&
-   cat mountpoint/touched | tee /dev/stderr | md5sum |
-   grep -q '^9af2f8218b150c351ad802c6f3d66abe  -$'
+if echo "#!/bin/sh" >mountpoint/touched &&
+   cat mountpoint/touched | tee /dev/stderr | md5sum | tee /dev/stderr |
+   grep -q '^3e2b31c72181b87149ff995e7202c0e3  -$'
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Echo in file (append)"
+if echo "echo 'Hello, World'" >>mountpoint/touched &&
+   cat mountpoint/touched | tee /dev/stderr | md5sum | tee /dev/stderr |
+   grep -q '^b4761d5b6f38ccd3eb9468f96e1a97b1  -$'
 then
 	ok
 else
