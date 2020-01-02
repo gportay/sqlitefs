@@ -265,6 +265,55 @@ exit:
 	return ret;
 }
 
+static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
+		       const char *parent)
+{
+	struct stat st;
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db || !linkname || !path || !parent)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO symlinks(path, parent, "
+		 "linkname) "
+		 "VALUES(\"%s\", \"%s\", \"%s\");",
+		 path, parent, linkname);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	memset(&st, 0, sizeof(struct stat));
+	/* Ignored st.st_dev = 0; */
+	/* Ignored st.st_ino = 0; */
+	st.st_mode = S_IFLNK;
+	st.st_nlink = 2;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	/* Ignored st.st_blksize = 0; */
+	st.st_atime = time(NULL);
+	st.st_mtime = time(NULL);
+	st.st_ctime = time(NULL);
+
+	ret = add_file(db, path, "/", NULL, 0, &st);
+	if (ret) {
+		snprintf(sql, sizeof(sql), "DELETE FROM symlinks "
+					   "WHERE path=\"%s\";",
+			 path);
+		if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+			fprintf(stderr, "sqlite3_exec: %s\n", e);
+			sqlite3_free(e);
+		}
+
+		return ret;
+	}
+
+	return ret;
+}
+
 static int add_directory(sqlite3 *db, const char *file, const char *parent,
 			 const struct stat *st)
 {
@@ -483,7 +532,21 @@ static int __unlink(sqlite3 *db, const char *path)
 		return -EIO;
 	}
 
+	snprintf(sql, sizeof(sql), "DELETE FROM symlinks "
+				   "WHERE path=\"%s\";",
+		 path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
 	return 0;
+}
+
+static int __symlink(sqlite3 *db, const char *linkname, const char *path)
+{
+	return add_symlink(db, linkname, path, "/");
 }
 
 static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
@@ -546,6 +609,17 @@ static int mkfs(const char *path)
 				"st_mtim_nsec INT(8), "
 				"st_ctim_sec INT(8), "
 				"st_ctim_nsec INT(8));");
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto error;
+	}
+
+	snprintf(sql, sizeof(sql),
+		 "CREATE TABLE IF NOT EXISTS symlinks("
+				"path TEXT NOT NULL PRIMARY KEY, "
+				"parent TEXT NOT NULL, "
+				"linkname TEXT NOT NULL);");
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -750,16 +824,7 @@ static int sqlitefs_symlink(const char *linkname, const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
-	fprintf(stderr, "%s(linkname: %s, path: %s)\n", __FUNCTION__, linkname,
-		path);
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	return __symlink(db, linkname, path);
 }
 
 /** Change the permission bits of a file */

@@ -229,7 +229,7 @@ if ln -sf .Trash mountpoint/symlink &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
