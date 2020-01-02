@@ -179,7 +179,7 @@ if rm mountpoint/echoed &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 

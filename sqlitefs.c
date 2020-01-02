@@ -660,16 +660,24 @@ static int sqlitefs_mkdir(const char *path, mode_t mode)
 static int sqlitefs_unlink(const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(path: %s)\n", __FUNCTION__, path);
+	char sql[BUFSIZ];
+	char *e;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
 		return -EINVAL;
 	}
 
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	snprintf(sql, sizeof(sql), "DELETE FROM files "
+				   "WHERE path=\"%s\";",
+		 path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 /** Remove a directory */
