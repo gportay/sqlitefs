@@ -1041,8 +1041,8 @@ static int sqlitefs_open(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
-int sqlitefs_read(const char *path, char *buf, size_t bufsize, off_t offset,
-	     struct fuse_file_info *fi)
+static int sqlitefs_read(const char *path, char *buf, size_t bufsize,
+			 off_t offset, struct fuse_file_info *fi)
 {
 	(void)fi;
 
