@@ -692,17 +692,25 @@ static int sqlitefs_rmdir(const char *path)
 static int sqlitefs_rename(const char *oldpath, const char *newpath)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(oldpath: %s, newpath: %s)\n", __FUNCTION__,
-		oldpath, newpath);
+	char sql[BUFSIZ];
+	char *e;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
 		return -EINVAL;
 	}
 
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"path=\"%s\" "
+				   "WHERE path=\"%s\";",
+		 newpath, oldpath);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 /** Create a hard link to a file */

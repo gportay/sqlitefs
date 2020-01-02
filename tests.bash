@@ -169,7 +169,7 @@ if mv mountpoint/touched mountpoint/echoed &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
