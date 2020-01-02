@@ -189,7 +189,7 @@ Written by Gaël PORTAY *gael.portay@gmail.com*
 
 ## COPYRIGHT
 
-Copyright (C) 2018-2019 Gaël PORTAY
+Copyright (C) 2018-2020 Gaël PORTAY
 
 Copyright (C) 2018 Savoir-Faire Linux Inc.
 
