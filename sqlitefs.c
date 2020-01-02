@@ -191,6 +191,26 @@ static int getattr_cb(void *data, int argc, char **argv, char **colname)
 	return SQLITE_OK;
 }
 
+struct readlink_data {
+	int error;
+	char *buf;
+	size_t len;
+};
+
+static int readlink_cb(void *data, int argc, char **argv, char **colname)
+{
+	struct readlink_data *pdata = (struct readlink_data *)data;
+	int i;
+	(void)argc;
+	(void)colname;
+
+	i = 1;
+	pdata->error = strlen(argv[i]) >= pdata->len ? ENAMETOOLONG : 0;
+	strncpy(pdata->buf, argv[i++], pdata->len);
+
+	return SQLITE_OK;
+}
+
 struct readdir_data {
 	const char *parent;
 	void *buffer;
@@ -549,6 +569,39 @@ static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 	return add_symlink(db, linkname, path, "/");
 }
 
+static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
+{
+	struct readlink_data data = {
+		errno = ENOENT,
+		buf = buf,
+		len = len,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db || !path || !path || !buf)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "SELECT "
+					"path, "
+					"linkname "
+				   "FROM symlinks WHERE path = \"%s\";", path);
+	ret = sqlite3_exec(db, sql, readlink_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	if (data.error)
+		return -data.error;
+
+	fprintf(stderr, "%s\n", buf);
+
+	return 0;
+}
+
 static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 {
 	struct stat st;
@@ -700,16 +753,7 @@ static int sqlitefs_readlink(const char *path, char *buf, size_t len)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
-	fprintf(stderr, "%s(path: %s, buf: %p, len: %lu)\n", __FUNCTION__,
-		path, buf, len);
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	return __readlink(db, path, buf, len);
 }
 
 /* Deprecated, use readdir() instead */

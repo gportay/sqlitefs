@@ -239,7 +239,7 @@ if readlink mountpoint/symlink | tee /dev/stderr | md5sum - |
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
