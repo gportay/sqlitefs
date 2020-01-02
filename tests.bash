@@ -249,6 +249,6 @@ if rm mountpoint/symlink &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
