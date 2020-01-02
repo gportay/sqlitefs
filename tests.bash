@@ -199,7 +199,7 @@ if rm mountpoint/README.md &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
