@@ -189,7 +189,7 @@ if cp README.md mountpoint/ &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
