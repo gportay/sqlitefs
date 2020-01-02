@@ -34,6 +34,12 @@ const char VERSION[] = __DATE__ " " __TIME__;
 	_a < _b ? _a : _b; \
 })
 
+#define __max(a,b) ({ \
+	__typeof__ (a) _a = (a); \
+	__typeof__ (b) _b = (b); \
+	_a > _b ? _a : _b; \
+})
+
 #define __strncmp(s1, s2) strncmp(s1, s2, sizeof(s2) - 1)
 
 #define __return_perror(s, e) do { \
@@ -285,6 +291,181 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 	return 0;
 }
 
+static int __stat(const char *path, struct stat *st)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+	struct getattr_data data = {
+		errno = ENOENT,
+		st = st,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	snprintf(sql, sizeof(sql), "SELECT "
+					"path, "
+					"st_dev, "
+					"st_ino, "
+					"st_mode, "
+					"st_nlink, "
+					"st_uid, "
+					"st_gid, "
+					"st_rdev, "
+					"st_size, "
+					"st_blksize, "
+					"st_blocks, "
+					"st_atim_sec, "
+					"st_atim_nsec, "
+					"st_mtim_sec, "
+					"st_mtim_nsec, "
+					"st_ctim_sec, "
+					"st_ctim_nsec "
+				   "FROM files WHERE path = \"%s\";", path);
+	ret = sqlite3_exec(db, sql, getattr_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	if (data.error)
+		return -data.error;
+
+	fprintstat(stderr, path, st);
+
+	return 0;
+}
+
+static ssize_t __pread(const char *path, char *buf, size_t bufsize,
+		       off_t offset)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+	int ret = -ENOENT;
+	ssize_t size = 0;
+	char sql[BUFSIZ];
+
+	if (!db) {
+		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	snprintf(sql, sizeof(sql),
+		 "SELECT data FROM files WHERE (path == \"%s\");", path);
+
+	for (;;) {
+		const unsigned char *data;
+		sqlite3_stmt *stmt;
+		int datasize;
+
+		if (sqlite3_prepare(db, sql, -1, &stmt, 0)) {
+			__sqlite3_perror("sqlite3_prepare", db);
+			ret = -EIO;
+			goto exit;
+		}
+
+		if (sqlite3_step(stmt) != SQLITE_ROW) {
+			__sqlite3_perror("sqlite3_step", db);
+			ret = -EIO;
+			goto exit;
+		}
+
+		data = sqlite3_column_blob(stmt, 0);
+		datasize = sqlite3_column_bytes(stmt, 0);
+		size = datasize - offset;
+
+		if (size < 0) {
+			size = 0;
+			buf[0] = 0;
+		} else {
+			size = __min((size_t)size, bufsize);
+			memcpy(buf, &data[offset], size);
+		}
+
+		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
+			__sqlite3_perror("sqlite3_step", db);
+			ret = -EIO;
+			continue;
+		}
+
+		ret = 0;
+		break;
+	}
+
+exit:
+	if (ret)
+		return ret;
+
+	fhexdump(stderr, offset, buf, size);
+
+	return size;
+}
+
+static ssize_t __pwrite(const char *path, const char *buf, size_t bufsize,
+			off_t offset)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+	ssize_t datasize = 0;
+	void *data = NULL;
+	struct stat st;
+	int ret;
+
+	ret = __stat(path, &st);
+	if (ret)
+		return ret;
+
+	if (offset) {
+		ssize_t s;
+
+		datasize = __max(st.st_size, offset);
+		datasize += bufsize;
+		data = malloc(datasize);
+		if (!data) {
+			ret = -ENOMEM;
+			goto exit;
+		}
+
+		s = __pread(path, data, st.st_size, 0);
+		if (s < 0) {
+			ret = s;
+			goto exit;
+		} else if (s < st.st_size) {
+			ret = -ENOMEM;
+			goto exit;
+		}
+
+		if (st.st_size < offset)
+			memset(data + st.st_size, 0, offset - st.st_size);
+
+		memcpy(data + offset, buf, bufsize);
+
+		ret = add_file(db, path, "/", data, datasize, &st);
+		if (ret)
+			goto exit;
+
+		goto exit;
+	}
+
+	ret = add_file(db, path, "/", buf, bufsize, &st);
+	if (ret)
+		return ret;
+
+exit:
+	if (data)
+		free(data);
+
+	if (ret)
+		return ret;
+
+	fhexdump(stderr, offset, buf, bufsize);
+
+	return bufsize;
+}
+
 static int mkfs(const char *path)
 {
 	char sql[BUFSIZ];
@@ -391,53 +572,7 @@ error:
  */
 static int sqlitefs_getattr(const char *path, struct stat *st)
 {
-	sqlite3 *db = fuse_get_context()->private_data;
-	struct getattr_data data = {
-		errno = ENOENT,
-		st = st,
-	};
-	char sql[BUFSIZ];
-	char *e;
-	int ret;
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	snprintf(sql, sizeof(sql), "SELECT "
-					"path, "
-					"st_dev, "
-					"st_ino, "
-					"st_mode, "
-					"st_nlink, "
-					"st_uid, "
-					"st_gid, "
-					"st_rdev, "
-					"st_size, "
-					"st_blksize, "
-					"st_blocks, "
-					"st_atim_sec, "
-					"st_atim_nsec, "
-					"st_mtim_sec, "
-					"st_mtim_nsec, "
-					"st_ctim_sec, "
-					"st_ctim_nsec "
-				   "FROM files WHERE path = \"%s\";", path);
-	ret = sqlite3_exec(db, sql, getattr_cb, &data, &e);
-	if (ret != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	if (data.error) {
-		return -data.error;
-	}
-
-	fprintstat(stderr, path, st);
-
-	return 0;
+	return __stat(path, st);
 }
 
 /** Read the target of a symbolic link
@@ -659,16 +794,70 @@ static int sqlitefs_chown(const char *path, uid_t uid, gid_t gid)
 static int sqlitefs_truncate(const char *path, off_t size)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(path: %s, size: %li)\n", __FUNCTION__, path, size);
+	void *data = NULL;
+	char sql[BUFSIZ];
+	struct stat st;
+	int ret;
+	char *e;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
 		return -EINVAL;
 	}
 
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	ret = __stat(path, &st);
+	if (ret)
+		return ret;
+
+	data = malloc(size);
+	ret = __pread(path, data, size, 0);
+	if (ret)
+		goto exit;
+
+	ret = -EIO;
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_size=%lu, "
+					"data=? "
+				   "WHERE path=\"%s\";",
+		 st.st_size, path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto exit;
+	}
+
+	for (;;) {
+		sqlite3_stmt *stmt;
+
+		if (sqlite3_prepare(db, sql, -1, &stmt, 0) != SQLITE_OK) {
+			__sqlite3_perror("sqlite3_prepare", db);
+			goto exit;
+		}
+
+		if (sqlite3_bind_blob(stmt, 1, data, size, SQLITE_STATIC)) {
+			__sqlite3_perror("sqlite3_bind_blob", db);
+			goto exit;
+		}
+
+		if (sqlite3_step(stmt) != SQLITE_DONE) {
+			__sqlite3_perror("sqlite3_step", db);
+			goto exit;
+		}
+
+		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
+			__sqlite3_perror("sqlite3_step", db);
+			continue;
+		}
+
+		ret = 0;
+		break;
+	}
+
+exit:
+	if (data)
+		free(data);
+
+	return ret;
 }
 
 /** Change the access and/or modification times of a file
@@ -723,58 +912,9 @@ static int sqlitefs_open(const char *path, struct fuse_file_info *fi)
 int sqlitefs_read(const char *path, char *buf, size_t bufsize, off_t offset,
 	     struct fuse_file_info *fi)
 {
-	sqlite3 *db = fuse_get_context()->private_data;
-	char sql[BUFSIZ];
-	int size = 0;
 	(void)fi;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	snprintf(sql, sizeof(sql),
-		 "SELECT data FROM files WHERE (path == \"%s\");", path);
-
-	for (;;) {
-		const unsigned char *data;
-		sqlite3_stmt *stmt;
-		int datasize;
-
-		if (sqlite3_prepare(db, sql, -1, &stmt, 0)) {
-			__sqlite3_perror("sqlite3_prepare", db);
-			goto exit;
-		}
-
-		if (sqlite3_step(stmt) != SQLITE_ROW) {
-			__sqlite3_perror("sqlite3_step", db);
-			goto exit;
-		}
-
-		data = sqlite3_column_blob(stmt, 0);
-		datasize = sqlite3_column_bytes(stmt, 0);
-		size = datasize - offset;
-
-		if (size < 0) {
-			size = 0;
-			buf[0] = 0;
-		} else {
-			size = __min((size_t)size, bufsize);
-			memcpy(buf, &data[offset], size);
-		}
-
-		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
-			__sqlite3_perror("sqlite3_step", db);
-			continue;
-		}
-
-		break;
-	}
-
-	fhexdump(stderr, offset, buf, size);
-
-exit:
-	return size;
+	return __pread(path, buf, bufsize, offset);
 }
 
 /** Write data to an open file
@@ -786,20 +926,11 @@ exit:
  * Changed in version 2.2
  */
 static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
-			  off_t off, struct fuse_file_info *fi)
+			  off_t offset, struct fuse_file_info *fi)
 {
-	sqlite3 *db = fuse_get_context()->private_data;
+	(void)fi;
 
-	fprintf(stderr, "%s(path: %s, buf: %p, bufsize: %lu, off: %li, fi: %p)\n",
-		__FUNCTION__, path, buf, bufsize, off, fi);
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
+	return __pwrite(path, buf, bufsize, offset);
 }
 
 /** Release an open file

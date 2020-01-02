@@ -158,7 +158,7 @@ if echo "Hello, World" >mountpoint/touched &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 
