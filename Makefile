@@ -10,6 +10,9 @@ override LDLIBS += $(shell pkg-config sqlite3 fuse --libs)
 
 all: sqlitefs mkfs.sqlitefs
 
+.PHONY: doc
+doc: sqlitefs.1.gz
+
 mkfs.sqlitefs: | sqlitefs
 	ln -sf sqlitefs $@
 
@@ -55,4 +58,10 @@ clean:
 PREPROCESS.c = $(CC) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -E
 %.i: %.c
 	$(PREPROCESS.c) $(OUTPUT_OPTION) $<
+
+%.1: %.1.adoc
+	asciidoctor -b manpage -o $@ $<
+
+%.gz: %
+	gzip -c $^ >$@
 
