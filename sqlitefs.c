@@ -369,8 +369,8 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 static int __stat(sqlite3 *db, const char *path, struct stat *st)
 {
 	struct getattr_data data = {
-		errno = ENOENT,
-		st = st,
+		.error = ENOENT,
+		.st = st,
 	};
 	char sql[BUFSIZ];
 	char *e;
@@ -756,9 +756,9 @@ static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 {
 	struct readlink_data data = {
-		errno = ENOENT,
-		buf = buf,
-		len = len,
+		.error = ENOENT,
+		.buf = buf,
+		.len = len,
 	};
 	char sql[BUFSIZ];
 	char *e;
