@@ -58,30 +58,30 @@ const char VERSION[] = __DATE__ " " __TIME__;
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
 
-static const char *mode(mode_t mode)
+static const char *mode_r(mode_t mode, char *buf, size_t bufsize)
 {
 	if (S_ISREG(mode))
-		return "regular file";
+		return strncpy(buf, "regular file", bufsize);
 
 	if (S_ISDIR(mode))
-		return "directory";
+		return strncpy(buf, "directory", bufsize);
 
 	if (S_ISBLK(mode))
-		return "block special file";
+		return strncpy(buf, "block special file", bufsize);
 
 	if (S_ISCHR(mode))
-		return "character special file";
+		return strncpy(buf, "character special file", bufsize);
 
 	if (S_ISFIFO(mode))
-		return "fifo";
+		return strncpy(buf, "fifo", bufsize);
 
 	if (S_ISLNK(mode))
-		return "symbolic link";
+		return strncpy(buf, "symbolic link", bufsize);
 
 	if (S_ISSOCK(mode))
-		return "socket";
+		return strncpy(buf, "socket", bufsize);
 
-	return "unknown";
+	return strncpy(buf, "unknown", bufsize);
 }
 
 static const char *uid_r(const uid_t uid, char *buf, size_t bufsize)
@@ -138,6 +138,7 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 	char atimbuf[BUFSIZ];
 	char mtimbuf[BUFSIZ];
 	char ctimbuf[BUFSIZ];
+	char modebuf[BUFSIZ];
 	char gidbuf[BUFSIZ];
 	char uidbuf[BUFSIZ];
 
@@ -149,7 +150,7 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 			  "Modify: %s\n"
 			  "Change: %s\n"
 			  " Birth: -\n",
-			  path, buf->st_size, buf->st_blocks, buf->st_blksize, mode(buf->st_mode),
+			  path, buf->st_size, buf->st_blocks, buf->st_blksize, mode_r(buf->st_mode, modebuf, sizeof(modebuf)),
 			  buf->st_rdev, buf->st_rdev, buf->st_ino, buf->st_nlink,
 			  buf->st_mode, uid_r(buf->st_uid, uidbuf, sizeof(uidbuf)), gid_r(buf->st_gid, gidbuf, sizeof(gidbuf)),
 			  timespec_r(&buf->st_atim, atimbuf, sizeof(atimbuf)),
