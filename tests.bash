@@ -81,7 +81,7 @@ EOF
 
 	mkdir -p mountpoint/.Trash
 else
-	sqlitefs -o nonempty -d mountpoint/ &
+	sqlitefs -d mountpoint/ &
 	while ! mountpoint --quiet mountpoint
 	do
 		sleep 0.1

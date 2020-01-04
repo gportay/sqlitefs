@@ -5,8 +5,8 @@
 #  SPDX-License-Identifier: LGPL-2.1
 #
 
-override CFLAGS += $(shell pkg-config sqlite3 fuse --cflags)
-override LDLIBS += $(shell pkg-config sqlite3 fuse --libs)
+override CFLAGS += $(shell pkg-config sqlite3 fuse3 --cflags)
+override LDLIBS += $(shell pkg-config sqlite3 fuse3 --libs)
 
 all: sqlitefs mkfs.sqlitefs
 
@@ -45,7 +45,7 @@ no-mount-tests: fs.db
 .PHONY: mount
 mount: sqlitefs | mountpoint fs.db
 	@echo "Note: You can run \$$ cat mountpoint/autorun.inf"
-	./sqlitefs -o nonempty -d mountpoint
+	./sqlitefs -d mountpoint
 
 .PHONY: umount
 umount:

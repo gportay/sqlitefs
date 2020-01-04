@@ -230,7 +230,7 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 		if (strcmp(pdata->parent, argv[0]) == 0)
 			continue;
 
-		pdata->filler(pdata->buffer, &argv[0][len], NULL, 0);
+		pdata->filler(pdata->buffer, &argv[0][len], NULL, 0, 0);
 	}
 
 	return SQLITE_OK;
@@ -906,28 +906,35 @@ error:
  *
  * All methods are optional, but some are essential for a useful
  * filesystem (e.g. getattr).  Open, flush, release, fsync, opendir,
- * releasedir, fsyncdir, access, create, ftruncate, fgetattr, lock,
- * init and destroy are special purpose methods, without which a full
- * featured filesystem can still be implemented.
+ * releasedir, fsyncdir, access, create, truncate, lock, init and
+ * destroy are special purpose methods, without which a full featured
+ * filesystem can still be implemented.
+ *
+ * In general, all methods are expected to perform any necessary
+ * permission checking. However, a filesystem may delegate this task
+ * to the kernel by passing the `default_permissions` mount option to
+ * `fuse_new()`. In this case, methods will only be called if
+ * the kernel's permission check has succeeded.
  *
  * Almost all operations take a path which can be of any length.
- *
- * Changed in fuse 2.8.0 (regardless of API version)
- * Previously, paths were limited to a length of PATH_MAX.
- *
- * See http://fuse.sourceforge.net/wiki/ for more information.  There
- * is also a snapshot of the relevant wiki pages in the doc/ folder.
  */
 
 /** Get file attributes.
  *
  * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
- * ignored.	 The 'st_ino' field is ignored except if the 'use_ino'
- * mount option is given.
+ * ignored. The 'st_ino' field is ignored except if the 'use_ino'
+ * mount option is given. In that case it is passed to userspace,
+ * but libfuse and the kernel will still assign a different
+ * inode for internal use (called the "nodeid").
+ *
+ * `fi` will always be NULL if the file is not currently open, but
+ * may also be NULL if the file is open.
  */
-static int sqlitefs_getattr(const char *path, struct stat *st)
+static int sqlitefs_getattr(const char *path, struct stat *st,
+			    struct fuse_file_info *fi)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+	(void)fi;
 
 	return __stat(db, path, st);
 }
@@ -946,9 +953,6 @@ static int sqlitefs_readlink(const char *path, char *buf, size_t len)
 
 	return __readlink(db, path, buf, len);
 }
-
-/* Deprecated, use readdir() instead */
-/* int (*getdir) (const char *, fuse_dirh_t, fuse_dirfil_t); */
 
 /** Create a file node
  *
@@ -992,10 +996,28 @@ static int sqlitefs_rmdir(const char *path)
 	return __unlink(db, path);
 }
 
-/** Rename a file */
-static int sqlitefs_rename(const char *oldpath, const char *newpath)
+/** Create a symbolic link */
+static int sqlitefs_symlink(const char *linkname, const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+
+	return __symlink(db, linkname, path);
+}
+
+/** Rename a file
+ *
+ * *flags* may be `RENAME_EXCHANGE` or `RENAME_NOREPLACE`. If
+ * RENAME_NOREPLACE is specified, the filesystem must not
+ * overwrite *newname* if it exists and return an error
+ * instead. If `RENAME_EXCHANGE` is specified, the filesystem
+ * must atomically exchange the two files, i.e. both must
+ * exist and neither may be deleted.
+ */
+static int sqlitefs_rename(const char *oldpath, const char *newpath,
+			   unsigned int flags)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+	(void)flags;
 
 	return __rename(db, oldpath, newpath);
 }
@@ -1017,60 +1039,100 @@ static int sqlitefs_link(const char *oldpath, const char *newpath)
 	return -ENOSYS;
 }
 
-/** Create a symbolic link */
-static int sqlitefs_symlink(const char *linkname, const char *path)
+/** Change the permission bits of a file
+ *
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
+ */
+static int sqlitefs_chmod(const char *path, mode_t mode,
+			  struct fuse_file_info *fi)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-
-	return __symlink(db, linkname, path);
-}
-
-/** Change the permission bits of a file */
-static int sqlitefs_chmod(const char *path, mode_t mode)
-{
-	sqlite3 *db = fuse_get_context()->private_data;
+	(void)fi;
 
 	return __chmod(db, path, mode);
 }
 
-/** Change the owner and group of a file */
-static int sqlitefs_chown(const char *path, uid_t uid, gid_t gid)
+/** Change the owner and group of a file
+ *
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
+ *
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
+ */
+static int sqlitefs_chown(const char *path, uid_t uid, gid_t gid,
+			  struct fuse_file_info *fi)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+	(void)fi;
 
 	return __chown(db, path, uid, gid);
 }
 
-/** Change the size of a file */
-static int sqlitefs_truncate(const char *path, off_t size)
+/** Change the size of a file
+ *
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
+ *
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
+ */
+static int sqlitefs_truncate(const char *path, off_t size,
+			     struct fuse_file_info *fi)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+	(void)fi;
 
 	return __truncate(db, path, size);
 }
 
-/** Change the access and/or modification times of a file
+/** Open a file
  *
- * Deprecated, use utimens() instead.
- */
-/* int (*utime) (const char *, struct utimbuf *); */
-
-/** File open operation
+ * Open flags are available in fi->flags. The following rules
+ * apply.
  *
- * No creation (O_CREAT, O_EXCL) and by default also no
- * truncation (O_TRUNC) flags will be passed to open(). If an
- * application specifies O_TRUNC, fuse first calls truncate()
- * and then open(). Only if 'atomic_o_trunc' has been
- * specified and kernel version is 2.6.24 or later, O_TRUNC is
- * passed on to open.
+ *  - Creation (O_CREAT, O_EXCL, O_NOCTTY) flags will be
+ *    filtered out / handled by the kernel.
  *
- * Unless the 'default_permissions' mount option is given,
- * open should check if the operation is permitted for the
- * given flags. Optionally open may also return an arbitrary
- * filehandle in the fuse_file_info structure, which will be
- * passed to all file operations.
+ *  - Access modes (O_RDONLY, O_WRONLY, O_RDWR, O_EXEC, O_SEARCH)
+ *    should be used by the filesystem to check if the operation is
+ *    permitted.  If the ``-o default_permissions`` mount option is
+ *    given, this check is already done by the kernel before calling
+ *    open() and may thus be omitted by the filesystem.
  *
- * Changed in version 2.2
+ *  - When writeback caching is enabled, the kernel may send
+ *    read requests even for files opened with O_WRONLY. The
+ *    filesystem should be prepared to handle this.
+ *
+ *  - When writeback caching is disabled, the filesystem is
+ *    expected to properly handle the O_APPEND flag and ensure
+ *    that each write is appending to the end of the file.
+ * 
+ *  - When writeback caching is enabled, the kernel will
+ *    handle O_APPEND. However, unless all changes to the file
+ *    come through the kernel this will not work reliably. The
+ *    filesystem should thus either ignore the O_APPEND flag
+ *    (and let the kernel handle it), or return an error
+ *    (indicating that reliably O_APPEND is not available).
+ *
+ * Filesystem may store an arbitrary file handle (pointer,
+ * index, etc) in fi->fh, and use this in other all other file
+ * operations (read, write, flush, release, fsync).
+ *
+ * Filesystem may also implement stateless file I/O and not store
+ * anything in fi->fh.
+ *
+ * There are also some flags (direct_io, keep_cache) which the
+ * filesystem may set in fi, to change the way the file is opened.
+ * See fuse_file_info structure in <fuse_common.h> for more details.
+ *
+ * If this request is answered with an error code of ENOSYS
+ * and FUSE_CAP_NO_OPEN_SUPPORT is set in
+ * `fuse_conn_info.capable`, this is treated as success and
+ * future calls to open will also succeed without being send
+ * to the filesystem process.
+ *
  */
 static int sqlitefs_open(const char *path, struct fuse_file_info *fi)
 {
@@ -1095,8 +1157,6 @@ static int sqlitefs_open(const char *path, struct fuse_file_info *fi)
  * 'direct_io' mount option is specified, in which case the return
  * value of the read system call will reflect the return value of
  * this operation.
- *
- * Changed in version 2.2
  */
 static int sqlitefs_read(const char *path, char *buf, size_t bufsize,
 			 off_t offset, struct fuse_file_info *fi)
@@ -1113,7 +1173,8 @@ static int sqlitefs_read(const char *path, char *buf, size_t bufsize,
  * except on error.	 An exception to this is when the 'direct_io'
  * mount option is specified (see read operation).
  *
- * Changed in version 2.2
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
  */
 static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
 			  off_t offset, struct fuse_file_info *fi)
@@ -1124,6 +1185,42 @@ static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
 	return __pwrite(db, path, buf, bufsize, offset);
 }
 
+/** Get file system statistics
+ *
+ * The 'f_favail', 'f_fsid' and 'f_flag' fields are ignored
+ */
+/* int (*statfs) (const char *, struct statvfs *); */
+
+/** Possibly flush cached data
+ *
+ * BIG NOTE: This is not equivalent to fsync().  It's not a
+ * request to sync dirty data.
+ *
+ * Flush is called on each close() of a file descriptor, as opposed to
+ * release which is called on the close of the last file descriptor for
+ * a file.  Under Linux, errors returned by flush() will be passed to 
+ * userspace as errors from close(), so flush() is a good place to write
+ * back any cached dirty data. However, many applications ignore errors 
+ * on close(), and on non-Linux systems, close() may succeed even if flush()
+ * returns an error. For these reasons, filesystems should not assume
+ * that errors returned by flush will ever be noticed or even
+ * delivered.
+ *
+ * NOTE: The flush() method may be called more than once for each
+ * open().  This happens if more than one file descriptor refers to an
+ * open file handle, e.g. due to dup(), dup2() or fork() calls.  It is
+ * not possible to determine if a flush is final, so each flush should
+ * be treated equally.  Multiple write-flush sequences are relatively
+ * rare, so this shouldn't be a problem.
+ *
+ * Filesystems shouldn't assume that flush will be called at any
+ * particular point.  It may be called more times than expected, or not
+ * at all.
+ *
+ * [close]: http://pubs.opengroup.org/onlinepubs/9699919799/functions/close.html
+ */
+/* int (*flush) (const char *, struct fuse_file_info *); */
+
 /** Release an open file
  *
  * Release is called when there are no more references to an open
@@ -1131,12 +1228,10 @@ static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
  * are unmapped.
  *
  * For every open() call there will be exactly one release() call
- * with the same flags and file descriptor.	 It is possible to
+ * with the same flags and file handle.  It is possible to
  * have a file opened more than once, in which case only the last
  * release will mean, that no more reads/writes will happen on the
  * file.  The return value of release is ignored.
- *
- * Changed in version 2.2
  */
 static int sqlitefs_release(const char *path, struct fuse_file_info *fi)
 {
@@ -1157,8 +1252,6 @@ static int sqlitefs_release(const char *path, struct fuse_file_info *fi)
  *
  * If the datasync parameter is non-zero, then only the user data
  * should be flushed, not the meta data.
- *
- * Changed in version 2.2
  */
 static int sqlitefs_fsync(const char *path, int datasync,
 			  struct fuse_file_info *fi)
@@ -1177,30 +1270,47 @@ static int sqlitefs_fsync(const char *path, int datasync,
 	return -ENOSYS;
 }
 
-/** Read directory
+/** Set extended attributes */
+/* int (*setxattr) (const char *, const char *, const char *, size_t, int); */
+
+/** Get extended attributes */
+/* int (*getxattr) (const char *, const char *, char *, size_t); */
+
+/** List extended attributes */
+/* int (*listxattr) (const char *, char *, size_t); */
+
+/** Remove extended attributes */
+/* int (*removexattr) (const char *, const char *); */
+
+/** Open directory
  *
- * This supersedes the old getdir() interface.  New applications
- * should use this.
+ * Unless the 'default_permissions' mount option is given,
+ * this method should check if opendir is permitted for this
+ * directory. Optionally opendir may also return an arbitrary
+ * filehandle in the fuse_file_info structure, which will be
+ * passed to readdir, releasedir and fsyncdir.
+ */
+/* int (*opendir) (const char *, struct fuse_file_info *); */
+
+/** Read directory
  *
  * The filesystem may choose between two modes of operation:
  *
  * 1) The readdir implementation ignores the offset parameter, and
  * passes zero to the filler function's offset.  The filler
  * function will not return '1' (unless an error happens), so the
- * whole directory is read in a single readdir operation.  This
- * works just like the old getdir() method.
+ * whole directory is read in a single readdir operation.
  *
  * 2) The readdir implementation keeps track of the offsets of the
  * directory entries.  It uses the offset parameter and always
  * passes non-zero offset to the filler function.  When the buffer
  * is full (or an error happens) the filler function will return
  * '1'.
- *
- * Introduced in version 2.3
  */
 static int sqlitefs_readdir(const char *path, void *buffer,
 			    fuse_fill_dir_t filler, off_t offset,
-			    struct fuse_file_info *fi)
+			    struct fuse_file_info *fi,
+			    enum fuse_readdir_flags flags)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 	struct readdir_data data = {
@@ -1212,6 +1322,7 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 	char *e;
 	int ret;
 	(void)offset;
+	(void)flags;
 	(void)fi;
 
 	if (!db) {
@@ -1219,8 +1330,8 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 		return -EINVAL;
 	}
 
-	filler(buffer, ".", NULL, 0);
-	filler(buffer, "..", NULL, 0);
+	filler(buffer, ".", NULL, 0, 0);
+	filler(buffer, "..", NULL, 0, 0);
 
 	snprintf(sql, sizeof(sql), "SELECT path "
 				   "FROM files "
@@ -1236,28 +1347,36 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 	return 0;
 }
 
+/** Release directory
+ */
+/* int (*releasedir) (const char *, struct fuse_file_info *); */
+
+/** Synchronize directory contents
+ *
+ * If the datasync parameter is non-zero, then only the user data
+ * should be flushed, not the meta data
+ */
+/* int (*fsyncdir) (const char *, int, struct fuse_file_info *); */
+
 /**
  * Initialize filesystem
  *
- * The return value will passed in the private_data field of
- * fuse_context to all file operations and as a parameter to the
- * destroy() method.
- *
- * Introduced in version 2.3
- * Changed in version 2.6
+ * The return value will passed in the `private_data` field of
+ * `struct fuse_context` to all file operations, and as a
+ * parameter to the destroy() method. It overrides the initial
+ * value provided to fuse_main() / fuse_new().
  */
-/* void *(*init) (struct fuse_conn_info *conn); */
+/* void *(*init) (struct fuse_conn_info *conn,
+		  struct fuse_config *cfg); */
 
 /**
  * Clean up filesystem
  *
  * Called on filesystem exit.
- *
- * Introduced in version 2.3
  */
-static void sqlitefs_destroy(void *ptr)
+static void sqlitefs_destroy(void *private_data)
 {
-	sqlite3 *db = (sqlite3 *)ptr;
+	sqlite3 *db = (sqlite3 *)private_data;
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
@@ -1275,8 +1394,6 @@ static void sqlitefs_destroy(void *ptr)
  * called.
  *
  * This method is not called under Linux kernel versions 2.4.x
- *
- * Introduced in version 2.5
  */
 static int sqlitefs_access(const char *path, int mask)
 {
@@ -1302,8 +1419,6 @@ static int sqlitefs_access(const char *path, int mask)
  * If this method is not implemented or under Linux kernel
  * versions earlier than 2.6.15, the mknod() and open() methods
  * will be called instead.
- *
- * Introduced in version 2.5
  */
 static int sqlitefs_create(const char *path, mode_t mode,
 			   struct fuse_file_info *fi)
@@ -1312,64 +1427,6 @@ static int sqlitefs_create(const char *path, mode_t mode,
 
 	fprintf(stderr, "%s(path: %s, mode: %i, fi: %p)\n", __FUNCTION__, path,
 		mode, fi);
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
-}
-
-/**
- * Change the size of an open file
- *
- * This method is called instead of the truncate() method if the
- * truncation was invoked from an ftruncate() system call.
- *
- * If this method is not implemented or under Linux kernel
- * versions earlier than 2.6.15, the truncate() method will be
- * called instead.
- *
- * Introduced in version 2.5
- */
-static int sqlitefs_ftruncate(const char *path, off_t off,
-			      struct fuse_file_info *fi)
-{
-	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(path: %s, off: %li, fi: %p)\n", __FUNCTION__, path,
-		off, fi);
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	fprintf(stderr, "%s: %s\n", __func__, strerror(ENOSYS));
-	return -ENOSYS;
-}
-
-/**
- * Get attributes from an open file
- *
- * This method is called instead of the getattr() method if the
- * file information is available.
- *
- * Currently this is only called after the create() method if that
- * is implemented (see above).  Later it may be called for
- * invocations of fstat() too.
- *
- * Introduced in version 2.5
- */
-static int sqlitefs_fgetattr(const char *path, struct stat *buf,
-			     struct fuse_file_info *fi)
-{
-	sqlite3 *db = fuse_get_context()->private_data;
-
-	fprintf(stderr, "%s(path: %s, buf: %p, fi: %p)\n", __FUNCTION__, path,
-		buf, fi);
 
 	if (!db) {
 		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
@@ -1409,8 +1466,6 @@ static int sqlitefs_fgetattr(const char *path, struct stat *buf,
  * Note: if this method is not implemented, the kernel will still
  * allow file locking to work locally.  Hence it is only
  * interesting for network filesystems and similar.
- *
- * Introduced in version 2.6
  */
 static int sqlitefs_lock(const char *path, struct fuse_file_info *fi, int cmd,
 			 struct flock *lock)
@@ -1436,13 +1491,16 @@ static int sqlitefs_lock(const char *path, struct fuse_file_info *fi, int cmd,
  * This supersedes the old utime() interface.  New applications
  * should use this.
  *
- * See the utimensat(2) man page for details.
+ * `fi` will always be NULL if the file is not currenlty open, but
+ * may also be NULL if the file is open.
  *
- * Introduced in version 2.6
+ * See the utimensat(2) man page for details.
  */
-static int sqlitefs_utimens(const char *path, const struct timespec tv[2])
+static int sqlitefs_utimens(const char *path, const struct timespec tv[2],
+			    struct fuse_file_info *fi)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+	(void)fi;
 
 	return __utimens(db, path, tv);
 }
@@ -1452,8 +1510,6 @@ static int sqlitefs_utimens(const char *path, const struct timespec tv[2])
  *
  * Note: This makes sense only for block device backed filesystems
  * mounted with the 'blkdev' option
- *
- * Introduced in version 2.6
  */
 static int sqlitefs_bmap(const char *path, size_t blocksize, uint64_t *idx)
 {
@@ -1484,9 +1540,10 @@ static int sqlitefs_bmap(const char *path, size_t blocksize, uint64_t *idx)
  * If flags has FUSE_IOCTL_DIR then the fuse_file_info refers to a
  * directory file handle.
  *
- * Introduced in version 2.8
+ * Note : the unsigned long request submitted by the application
+ * is truncated to 32 bits.
  */
-static int sqlitefs_ioctl(const char *path, int cmd, void *arg,
+static int sqlitefs_ioctl(const char *path, unsigned int cmd, void *arg,
 			  struct fuse_file_info *fi, unsigned int flags,
 			  void *data)
 {
@@ -1518,8 +1575,6 @@ static int sqlitefs_ioctl(const char *path, int cmd, void *arg,
  *
  * The callee is responsible for destroying ph with
  * fuse_pollhandle_destroy() when no longer in use.
- *
- * Introduced in version 2.8
  */
 static int sqlitefs_poll(const char *path, struct fuse_file_info *fi,
 			 struct fuse_pollhandle *ph, unsigned *reventsp)
@@ -1538,6 +1593,35 @@ static int sqlitefs_poll(const char *path, struct fuse_file_info *fi,
 	return -ENOSYS;
 }
 
+/** Write contents of buffer to an open file
+ *
+ * Similar to the write() method, but data is supplied in a
+ * generic buffer.  Use fuse_buf_copy() to transfer data to
+ * the destination.
+ *
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
+ */
+/* int (*write_buf) (const char *, struct fuse_bufvec *buf, off_t off,
+		     struct fuse_file_info *); */
+
+/** Store data from an open file in a buffer
+ *
+ * Similar to the read() method, but data is stored and
+ * returned in a generic buffer.
+ *
+ * No actual copying of data has to take place, the source
+ * file descriptor may simply be stored in the buffer for
+ * later data transfer.
+ *
+ * The buffer must be allocated dynamically and stored at the
+ * location pointed to by bufp.  If the buffer contains memory
+ * regions, they too must be allocated using malloc().  The
+ * allocated memory will be freed by the caller.
+ */
+/* int (*read_buf) (const char *, struct fuse_bufvec **bufp,
+		    size_t size, off_t off, struct fuse_file_info *); */
+
 /**
  * Perform BSD file locking operation
  *
@@ -1555,8 +1639,6 @@ static int sqlitefs_poll(const char *path, struct fuse_file_info *fi,
  * Note: if this method is not implemented, the kernel will still
  * allow file locking to work locally.  Hence it is only
  * interesting for network filesystems and similar.
- *
- * Introduced in version 2.9
  */
 static int sqlitefs_flock(const char *path, struct fuse_file_info *fi, int op)
 {
@@ -1581,8 +1663,6 @@ static int sqlitefs_flock(const char *path, struct fuse_file_info *fi, int op)
  * file.  If this function returns success then any subsequent write
  * request to specified range is guaranteed not to fail because of lack
  * of space on the file system media.
- *
- * Introduced in version 2.9.1
  */
 static int sqlitefs_fallocate(const char *path, int mode, off_t off, off_t len,
 			      struct fuse_file_info *fi)
@@ -1601,10 +1681,26 @@ static int sqlitefs_fallocate(const char *path, int mode, off_t off, off_t len,
 	return -ENOSYS;
 }
 
+/**
+ * Copy a range of data from one file to another
+ *
+ * Performs an optimized copy between two file descriptors without the
+ * additional cost of transferring data through the FUSE kernel module
+ * to user space (glibc) and then back into the FUSE filesystem again.
+ *
+ * In case this method is not implemented, glibc falls back to reading
+ * data from the source and writing to the destination. Effectively
+ * doing an inefficient copy of the data.
+ */
+/* ssize_t (*copy_file_range) (const char *path_in,
+			       struct fuse_file_info *fi_in,
+			       off_t offset_in, const char *path_out,
+			       struct fuse_file_info *fi_out,
+			       off_t offset_out, size_t size, int flags); */
+
 static struct fuse_operations operations = {
 	.getattr = sqlitefs_getattr,
 	.readlink = sqlitefs_readlink,
-	/* .getdir */
 	.mknod = sqlitefs_mknod,
 	.mkdir = sqlitefs_mkdir,
 	.unlink = sqlitefs_unlink,
@@ -1615,12 +1711,15 @@ static struct fuse_operations operations = {
 	.chmod = sqlitefs_chmod,
 	.chown = sqlitefs_chown,
 	.truncate = sqlitefs_truncate,
-	/* .utime */
 	.open = sqlitefs_open,
 	.read = sqlitefs_read,
 	.write = sqlitefs_write,
+	/* .flush */
 	.release = sqlitefs_release,
 	.fsync = sqlitefs_fsync,
+	/* .setxattr */
+	/* .getxattr */
+	/* .removexattr */
 	/* .opendir */
 	.readdir = sqlitefs_readdir,
 	/* .releasedir */
@@ -1629,8 +1728,6 @@ static struct fuse_operations operations = {
 	.destroy = sqlitefs_destroy,
 	.access = sqlitefs_access,
 	.create = sqlitefs_create,
-	.ftruncate = sqlitefs_ftruncate,
-	.fgetattr = sqlitefs_fgetattr,
 	.lock = sqlitefs_lock,
 	.utimens = sqlitefs_utimens,
 	.bmap = sqlitefs_bmap,
@@ -1640,6 +1737,7 @@ static struct fuse_operations operations = {
 	/* .read_buf */
 	.flock = sqlitefs_flock,
 	.fallocate = sqlitefs_fallocate,
+	/* .copy_file_range */
 };
 
 int main(int argc, char *argv[])
