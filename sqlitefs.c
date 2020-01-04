@@ -397,7 +397,8 @@ static int __stat(sqlite3 *db, const char *path, struct stat *st)
 					"st_mtim_nsec, "
 					"st_ctim_sec, "
 					"st_ctim_nsec "
-				   "FROM files WHERE path = \"%s\";", path);
+				   "FROM files WHERE path = \"%s\";",
+		 path);
 	ret = sqlite3_exec(db, sql, getattr_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -491,8 +492,10 @@ static ssize_t __pread(sqlite3 *db, const char *path, char *buf,
 	if (!db || !buf)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql),
-		 "SELECT data FROM files WHERE (path == \"%s\");", path);
+	snprintf(sql, sizeof(sql), "SELECT data "
+				   "FROM files "
+				   "WHERE (path == \"%s\");",
+		 path);
 
 	for (;;) {
 		const unsigned char *data;
@@ -767,7 +770,8 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 	snprintf(sql, sizeof(sql), "SELECT "
 					"path, "
 					"linkname "
-				   "FROM symlinks WHERE path = \"%s\";", path);
+				   "FROM symlinks WHERE path = \"%s\";",
+		 path);
 	ret = sqlite3_exec(db, sql, readlink_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -1217,8 +1221,10 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 	filler(buffer, ".", NULL, 0);
 	filler(buffer, "..", NULL, 0);
 
-	snprintf(sql, sizeof(sql),
-		 "SELECT path FROM files WHERE parent = \"%s\";", path);
+	snprintf(sql, sizeof(sql), "SELECT path "
+				   "FROM files "
+				   "WHERE parent = \"%s\";",
+		 path);
 	ret = sqlite3_exec(db, sql, readdir_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
