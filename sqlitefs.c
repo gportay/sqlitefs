@@ -241,6 +241,9 @@ static int add_file(sqlite3 *db, const char *file, const char *parent,
 	char sql[BUFSIZ];
 	int ret = -EIO;
 
+	if (!db || !file || !parent || !st)
+		return -EINVAL;
+
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
 		 "data, st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, "
 		 "st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
@@ -340,6 +343,9 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 	char sql[BUFSIZ];
 	char *e;
 
+	if (!db || !file || !parent || !st)
+		return -EINVAL;
+
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
 		 "st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
 		 "st_size, st_blksize, st_blocks, st_atim_sec, st_atim_nsec, "
@@ -371,10 +377,8 @@ static int __stat(const char *path, struct stat *st)
 	char *e;
 	int ret;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+	if (!db || !st)
 		return -EINVAL;
-	}
 
 	snprintf(sql, sizeof(sql), "SELECT "
 					"path, "
@@ -418,10 +422,8 @@ static ssize_t __pread(const char *path, char *buf, size_t bufsize,
 	ssize_t size = 0;
 	char sql[BUFSIZ];
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
+	if (!db || !buf)
 		return -EINVAL;
-	}
 
 	snprintf(sql, sizeof(sql),
 		 "SELECT data FROM files WHERE (path == \"%s\");", path);
@@ -482,6 +484,9 @@ static ssize_t __pwrite(const char *path, const char *buf, size_t bufsize,
 	void *data = NULL;
 	struct stat st;
 	int ret;
+
+	if (!db || !buf)
+		return -EINVAL;
 
 	ret = __stat(path, &st);
 	if (ret)
@@ -580,7 +585,7 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 	char *e;
 	int ret;
 
-	if (!db || !path || !path || !buf)
+	if (!db || !path || !buf)
 		return -EINVAL;
 
 	snprintf(sql, sizeof(sql), "SELECT "
@@ -631,6 +636,9 @@ static int mkfs(const char *path)
 	sqlite3 *db;
 	int exists;
 	char *e;
+
+	if (!path)
+		return -EINVAL;
 
 	exists = stat(path, &st) == 0;
 	if (exists)
@@ -769,11 +777,6 @@ static int sqlitefs_mknod(const char *path, mode_t mode, dev_t rdev)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 	struct stat st;
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
 
 	memset(&st, 0, sizeof(struct stat));
 	st.st_dev = rdev;
