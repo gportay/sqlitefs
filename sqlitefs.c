@@ -1229,7 +1229,7 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
-		return -EACCES;
+		return -EIO;
 	}
 
 	return 0;
