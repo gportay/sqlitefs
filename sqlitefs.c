@@ -413,6 +413,74 @@ static int __stat(sqlite3 *db, const char *path, struct stat *st)
 	return 0;
 }
 
+static int __chmod(sqlite3 *db, const char *path, mode_t mode)
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_mode=%u "
+				   "WHERE path=\"%s\";",
+		 mode, path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int __chown(sqlite3 *db, const char *path, uid_t uid, gid_t gid)
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_uid=%u, "
+					"st_gid=%u "
+				   "WHERE path=\"%s\";",
+		 uid, gid, path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int __utimens(sqlite3 *db, const char *path, const struct timespec tv[2])
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	if (!db || !path)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_mtim_sec=%lu, "
+					"st_mtim_nsec=%lu, "
+					"st_ctim_sec=%lu, "
+					"st_ctim_nsec=%lu "
+				   "WHERE path=\"%s\";",
+		 tv[0].tv_sec, tv[0].tv_nsec, tv[1].tv_sec, tv[1].tv_nsec,
+		 path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
+}
+
 static ssize_t __pread(sqlite3 *db, const char *path, char *buf,
 		       size_t bufsize, off_t offset)
 {
@@ -535,6 +603,117 @@ exit:
 	fhexdump(stderr, offset, buf, bufsize);
 
 	return bufsize;
+}
+
+static int __truncate(sqlite3 *db, const char *path, off_t size)
+{
+	void *data = NULL;
+	char sql[BUFSIZ];
+	struct stat st;
+	int ret;
+	char *e;
+
+	if (!db || !path)
+		return -EINVAL;
+
+	ret = __stat(db, path, &st);
+	if (ret)
+		return ret;
+
+	data = malloc(size);
+	ret = __pread(db, path, data, size, 0);
+	if (ret)
+		goto exit;
+
+	ret = -EIO;
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_size=%lu, "
+					"data=? "
+				   "WHERE path=\"%s\";",
+		 st.st_size, path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto exit;
+	}
+
+	for (;;) {
+		sqlite3_stmt *stmt;
+
+		if (sqlite3_prepare(db, sql, -1, &stmt, 0) != SQLITE_OK) {
+			__sqlite3_perror("sqlite3_prepare", db);
+			goto exit;
+		}
+
+		if (sqlite3_bind_blob(stmt, 1, data, size, SQLITE_STATIC)) {
+			__sqlite3_perror("sqlite3_bind_blob", db);
+			goto exit;
+		}
+
+		if (sqlite3_step(stmt) != SQLITE_DONE) {
+			__sqlite3_perror("sqlite3_step", db);
+			goto exit;
+		}
+
+		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
+			__sqlite3_perror("sqlite3_step", db);
+			continue;
+		}
+
+		ret = 0;
+		break;
+	}
+
+exit:
+	if (data)
+		free(data);
+
+	return ret;
+}
+
+static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
+{
+	struct stat st;
+
+	if (!db || !path)
+		return -EINVAL;
+
+	memset(&st, 0, sizeof(struct stat));
+	st.st_dev = rdev;
+	/* Ignored st.st_ino = 0; */
+	st.st_mode = mode;
+	st.st_nlink = 1;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	/* Ignored st.st_blksize = 0; */
+	st.st_atime = time(NULL);
+	st.st_mtime = time(NULL);
+	st.st_ctime = time(NULL);
+	if (add_file(db, path, "/", NULL, 0, &st))
+		return -EIO;
+
+	return 0;
+}
+
+static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	if (!db || !oldpath || !newpath)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"path=\"%s\" "
+				   "WHERE path=\"%s\";",
+		 newpath, oldpath);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 static int __unlink(sqlite3 *db, const char *path)
@@ -775,23 +954,8 @@ static int sqlitefs_readlink(const char *path, char *buf, size_t len)
 static int sqlitefs_mknod(const char *path, mode_t mode, dev_t rdev)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	struct stat st;
 
-	memset(&st, 0, sizeof(struct stat));
-	st.st_dev = rdev;
-	/* Ignored st.st_ino = 0; */
-	st.st_mode = mode;
-	st.st_nlink = 1;
-	st.st_uid = getuid();
-	st.st_gid = getgid();
-	/* Ignored st.st_blksize = 0; */
-	st.st_atime = time(NULL);
-	st.st_mtime = time(NULL);
-	st.st_ctime = time(NULL);
-	if (add_file(db, path, "/", NULL, 0, &st))
-		return -EIO;
-
-	return 0;
+	return __mknod(db, path, mode, rdev);
 }
 
 /** Create a directory
@@ -827,25 +991,8 @@ static int sqlitefs_rmdir(const char *path)
 static int sqlitefs_rename(const char *oldpath, const char *newpath)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	char sql[BUFSIZ];
-	char *e;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"path=\"%s\" "
-				   "WHERE path=\"%s\";",
-		 newpath, oldpath);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	return 0;
+	return __rename(db, oldpath, newpath);
 }
 
 /** Create a hard link to a file */
@@ -877,121 +1024,24 @@ static int sqlitefs_symlink(const char *linkname, const char *path)
 static int sqlitefs_chmod(const char *path, mode_t mode)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	char sql[BUFSIZ];
-	char *e;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_mode=%u "
-				   "WHERE path=\"%s\";",
-		 mode, path);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	return 0;
+	return __chmod(db, path, mode);
 }
 
 /** Change the owner and group of a file */
 static int sqlitefs_chown(const char *path, uid_t uid, gid_t gid)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	char sql[BUFSIZ];
-	char *e;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_uid=%u, "
-					"st_gid=%u "
-				   "WHERE path=\"%s\";",
-		 uid, gid, path);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	return 0;
+	return __chown(db, path, uid, gid);
 }
 
 /** Change the size of a file */
 static int sqlitefs_truncate(const char *path, off_t size)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	void *data = NULL;
-	char sql[BUFSIZ];
-	struct stat st;
-	int ret;
-	char *e;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	ret = __stat(db, path, &st);
-	if (ret)
-		return ret;
-
-	data = malloc(size);
-	ret = __pread(db, path, data, size, 0);
-	if (ret)
-		goto exit;
-
-	ret = -EIO;
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_size=%lu, "
-					"data=? "
-				   "WHERE path=\"%s\";",
-		 st.st_size, path);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		goto exit;
-	}
-
-	for (;;) {
-		sqlite3_stmt *stmt;
-
-		if (sqlite3_prepare(db, sql, -1, &stmt, 0) != SQLITE_OK) {
-			__sqlite3_perror("sqlite3_prepare", db);
-			goto exit;
-		}
-
-		if (sqlite3_bind_blob(stmt, 1, data, size, SQLITE_STATIC)) {
-			__sqlite3_perror("sqlite3_bind_blob", db);
-			goto exit;
-		}
-
-		if (sqlite3_step(stmt) != SQLITE_DONE) {
-			__sqlite3_perror("sqlite3_step", db);
-			goto exit;
-		}
-
-		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
-			__sqlite3_perror("sqlite3_step", db);
-			continue;
-		}
-
-		ret = 0;
-		break;
-	}
-
-exit:
-	if (data)
-		free(data);
-
-	return ret;
+	return __truncate(db, path, size);
 }
 
 /** Change the access and/or modification times of a file
@@ -1386,30 +1436,8 @@ static int sqlitefs_lock(const char *path, struct fuse_file_info *fi, int cmd,
 static int sqlitefs_utimens(const char *path, const struct timespec tv[2])
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	char sql[BUFSIZ];
-	char *e;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_mtim_sec=%lu, "
-					"st_mtim_nsec=%lu, "
-					"st_ctim_sec=%lu, "
-					"st_ctim_nsec=%lu "
-				   "WHERE path=\"%s\";",
-		 tv[0].tv_sec, tv[0].tv_nsec, tv[1].tv_sec, tv[1].tv_nsec,
-		 path);
-
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	return 0;
+	return __utimens(db, path, tv);
 }
 
 /**
