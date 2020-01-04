@@ -366,9 +366,8 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 	return 0;
 }
 
-static int __stat(const char *path, struct stat *st)
+static int __stat(sqlite3 *db, const char *path, struct stat *st)
 {
-	sqlite3 *db = fuse_get_context()->private_data;
 	struct getattr_data data = {
 		errno = ENOENT,
 		st = st,
@@ -414,10 +413,9 @@ static int __stat(const char *path, struct stat *st)
 	return 0;
 }
 
-static ssize_t __pread(const char *path, char *buf, size_t bufsize,
-		       off_t offset)
+static ssize_t __pread(sqlite3 *db, const char *path, char *buf,
+		       size_t bufsize, off_t offset)
 {
-	sqlite3 *db = fuse_get_context()->private_data;
 	int ret = -ENOENT;
 	ssize_t size = 0;
 	char sql[BUFSIZ];
@@ -476,10 +474,9 @@ exit:
 	return size;
 }
 
-static ssize_t __pwrite(const char *path, const char *buf, size_t bufsize,
-			off_t offset)
+static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
+			size_t bufsize, off_t offset)
 {
-	sqlite3 *db = fuse_get_context()->private_data;
 	ssize_t datasize = 0;
 	void *data = NULL;
 	struct stat st;
@@ -488,7 +485,7 @@ static ssize_t __pwrite(const char *path, const char *buf, size_t bufsize,
 	if (!db || !buf)
 		return -EINVAL;
 
-	ret = __stat(path, &st);
+	ret = __stat(db, path, &st);
 	if (ret)
 		return ret;
 
@@ -503,7 +500,7 @@ static ssize_t __pwrite(const char *path, const char *buf, size_t bufsize,
 			goto exit;
 		}
 
-		s = __pread(path, data, st.st_size, 0);
+		s = __pread(db, path, data, st.st_size, 0);
 		if (s < 0) {
 			ret = s;
 			goto exit;
@@ -746,7 +743,9 @@ error:
  */
 static int sqlitefs_getattr(const char *path, struct stat *st)
 {
-	return __stat(path, st);
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	return __stat(db, path, st);
 }
 
 /** Read the target of a symbolic link
@@ -940,12 +939,12 @@ static int sqlitefs_truncate(const char *path, off_t size)
 		return -EINVAL;
 	}
 
-	ret = __stat(path, &st);
+	ret = __stat(db, path, &st);
 	if (ret)
 		return ret;
 
 	data = malloc(size);
-	ret = __pread(path, data, size, 0);
+	ret = __pread(db, path, data, size, 0);
 	if (ret)
 		goto exit;
 
@@ -1047,9 +1046,10 @@ static int sqlitefs_open(const char *path, struct fuse_file_info *fi)
 static int sqlitefs_read(const char *path, char *buf, size_t bufsize,
 			 off_t offset, struct fuse_file_info *fi)
 {
+	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
 
-	return __pread(path, buf, bufsize, offset);
+	return __pread(db, path, buf, bufsize, offset);
 }
 
 /** Write data to an open file
@@ -1063,9 +1063,10 @@ static int sqlitefs_read(const char *path, char *buf, size_t bufsize,
 static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
 			  off_t offset, struct fuse_file_info *fi)
 {
+	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
 
-	return __pwrite(path, buf, bufsize, offset);
+	return __pwrite(db, path, buf, bufsize, offset);
 }
 
 /** Release an open file
