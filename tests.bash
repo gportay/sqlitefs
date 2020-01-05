@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (C) 2019-2020 Gaël PORTAY
+# Copyright (C) 2019 Gaël PORTAY
 #
 # SPDX-License-Identifier: LGPL-2.1
 #
@@ -81,7 +81,7 @@ EOF
 
 	mkdir -p mountpoint/.Trash
 else
-	sqlitefs -d mountpoint/ &
+	sqlitefs -f mountpoint/ &
 	while ! mountpoint --quiet mountpoint
 	do
 		sleep 0.1
