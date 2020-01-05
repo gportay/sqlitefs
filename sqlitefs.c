@@ -28,6 +28,12 @@ const char VERSION[] = __DATE__ " " __TIME__;
 
 #include "hexdump.h"
 
+static int DEBUG = 0;
+#define debug(fmt, ...) if (DEBUG) fprintf(stderr, fmt, ##__VA_ARGS__)
+#define debug2(fmt, ...) if (DEBUG >= 2) fprintf(stderr, fmt, ##__VA_ARGS__)
+#define hexdebug(addr, buf, size) if (DEBUG) fhexdump(stderr, addr, buf, size)
+#define hexdebug2(addr, buf, size) if (DEBUG >= 2) fhexdump(stderr, addr, buf, size)
+
 #define __min(a,b) ({ \
 	__typeof__ (a) _a = (a); \
 	__typeof__ (b) _b = (b); \
@@ -410,7 +416,8 @@ static int __stat(sqlite3 *db, const char *path, struct stat *st)
 	if (data.error)
 		return -data.error;
 
-	fprintstat(stderr, path, st);
+	if (DEBUG >= 2)
+		fprintstat(stderr, path, st);
 
 	return 0;
 }
@@ -541,7 +548,7 @@ exit:
 	if (ret)
 		return ret;
 
-	fhexdump(stderr, offset, buf, size);
+	hexdebug2(offset, buf, size);
 
 	return size;
 }
@@ -604,7 +611,7 @@ exit:
 	if (ret)
 		return ret;
 
-	fhexdump(stderr, offset, buf, bufsize);
+	hexdebug2(offset, buf, bufsize);
 
 	return bufsize;
 }
@@ -783,7 +790,8 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 	if (data.error)
 		return -data.error;
 
-	fprintf(stderr, "%s\n", buf);
+	if (DEBUG)
+		fprintf(stderr, "%s\n", buf);
 
 	return 0;
 }
@@ -1740,8 +1748,50 @@ static struct fuse_operations operations = {
 	/* .copy_file_range */
 };
 
+enum {
+	KEY_DEBUG,
+	KEY_HELP,
+	KEY_VERSION,
+};
+
+static struct fuse_opt sqlitefs_opts[] = {
+	FUSE_OPT_KEY("-d",              KEY_DEBUG),
+	FUSE_OPT_KEY("debug",           KEY_DEBUG),
+	FUSE_OPT_KEY("-V",		KEY_VERSION),
+	FUSE_OPT_KEY("--version",	KEY_VERSION),
+	FUSE_OPT_KEY("-h",		KEY_HELP),
+	FUSE_OPT_KEY("--help",		KEY_HELP),
+	FUSE_OPT_END
+};
+
+static int sqlitefs_opt_proc(void *data, const char *arg, int key,
+			     struct fuse_args *outargs)
+{
+	(void)data;
+
+	switch (key) {
+	case KEY_DEBUG:
+		DEBUG++;
+		break;
+
+	case KEY_HELP:
+		fuse_opt_add_arg(outargs, arg);
+		fuse_main(outargs->argc, outargs->argv, &operations, NULL);
+		exit(EXIT_SUCCESS);
+
+	case KEY_VERSION:
+		fprintf(stderr, "SQLiteFS version %s\n", VERSION);
+		fuse_opt_add_arg(outargs, arg);
+		fuse_main(outargs->argc, outargs->argv, &operations, NULL);
+		exit(EXIT_SUCCESS);
+	}
+
+	return 1;
+}
+
 int main(int argc, char *argv[])
 {
+	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	sqlite3 *db;
 
 	if (__strncmp(basename(argv[0]), "mkfs.sqlitefs") == 0) {
@@ -1750,6 +1800,12 @@ int main(int argc, char *argv[])
 			__exit_perror("fs.db", -err);
 
 		return EXIT_SUCCESS;
+	}
+
+	if (fuse_opt_parse(&args, NULL, sqlitefs_opts, sqlitefs_opt_proc)) {
+		char * args[] = { argv[0], "--help" };
+		fuse_main(sizeof(args)/sizeof(char *), args, &operations, NULL);
+		__exit_perror("fuse_opt_parse", EINVAL);
 	}
 
 	if (sqlite3_open_v2("fs.db", &db, SQLITE_OPEN_READWRITE, NULL)) {
