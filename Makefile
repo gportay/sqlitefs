@@ -51,6 +51,11 @@ mount: sqlitefs | mountpoint fs.db
 umount:
 	fusermount -u mountpoint
 
+.PHONY: shell
+shell: export EXEC = $(SHELL)
+shell: sqlitefs | mountpoint fs.db
+	./sqlitefs -f mountpoint
+
 .PHONY: clean
 clean:
 	rm -f sqlitefs mkfs.sqlitefs fs.db failed.db

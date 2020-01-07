@@ -17,6 +17,7 @@ const char VERSION[] = __DATE__ " " __TIME__;
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <errno.h>
 #include <getopt.h>
 #include <pwd.h>
@@ -25,6 +26,7 @@ const char VERSION[] = __DATE__ " " __TIME__;
 #include <libgen.h>
 #include <fuse.h>
 #include <sqlite3.h>
+#include <pthread.h>
 
 #include "hexdump.h"
 
@@ -47,6 +49,16 @@ static int DEBUG = 0;
 })
 
 #define __strncmp(s1, s2) strncmp(s1, s2, sizeof(s2) - 1)
+
+#define __return(s) do {\
+	perror(s); \
+	return -errno; \
+} while (0)
+
+#define __exit(s) do {\
+	perror(s); \
+	exit(EXIT_FAILURE); \
+} while (0)
 
 #define __return_perror(s, e) do { \
 	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
@@ -1789,15 +1801,33 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 	return 1;
 }
 
+static void *start(void *arg)
+{
+	pthread_t main_thread = *(pthread_t *)arg;
+	static int ret;
+
+	ret = system(getenv("EXEC"));
+	if (ret)
+		perror("system");
+
+	if (pthread_kill(main_thread, SIGTERM))
+		perror("ptrhead_kill");
+
+	ret = WEXITSTATUS(ret);
+	return &ret;
+}
+
 int main(int argc, char *argv[])
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+	pthread_t t, main_thread = pthread_self();
 	sqlite3 *db;
+	int ret;
 
 	if (__strncmp(basename(argv[0]), "mkfs.sqlitefs") == 0) {
-		int err = mkfs("fs.db");
-		if (err)
-			__exit_perror("fs.db", -err);
+		ret = mkfs("fs.db");
+		if (ret)
+			__exit_perror("fs.db", -ret);
 
 		return EXIT_SUCCESS;
 	}
@@ -1808,11 +1838,21 @@ int main(int argc, char *argv[])
 		__exit_perror("fuse_opt_parse", EINVAL);
 	}
 
+	if (getenv("EXEC"))
+		if (pthread_create(&t, NULL, start, &main_thread))
+			__exit("pthread_create");
+
 	if (sqlite3_open_v2("fs.db", &db, SQLITE_OPEN_READWRITE, NULL)) {
 		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
 		sqlite3_close(db);
 		__exit_perror("fs.db", EIO);
 	}
 
-	return fuse_main(argc, argv, &operations, db);
+	ret = fuse_main(argc, argv, &operations, db);
+
+	if (getenv("EXEC"))
+		if (pthread_join(t, NULL))
+			perror("pthread_join");
+
+	return ret;
 }
