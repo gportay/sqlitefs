@@ -1790,6 +1790,7 @@ static struct fuse_operations operations = {
 
 enum {
 	KEY_DEBUG,
+	KEY_FOREGROUND,
 	KEY_HELP,
 	KEY_VERSION,
 };
@@ -1797,6 +1798,7 @@ enum {
 static struct fuse_opt sqlitefs_opts[] = {
 	FUSE_OPT_KEY("-d",              KEY_DEBUG),
 	FUSE_OPT_KEY("debug",           KEY_DEBUG),
+	FUSE_OPT_KEY("-f",              KEY_FOREGROUND),
 	FUSE_OPT_KEY("-V",		KEY_VERSION),
 	FUSE_OPT_KEY("--version",	KEY_VERSION),
 	FUSE_OPT_KEY("-h",		KEY_HELP),
@@ -1807,9 +1809,13 @@ static struct fuse_opt sqlitefs_opts[] = {
 static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 			     struct fuse_args *outargs)
 {
-	(void)data;
+	int *foreground = (int *)data;
 
 	switch (key) {
+	case KEY_FOREGROUND:
+		*foreground = 1;
+		break;
+
 	case KEY_DEBUG:
 		DEBUG++;
 		break;
@@ -1845,12 +1851,23 @@ static void *start(void *arg)
 	return &ret;
 }
 
+static void usage(char *argv0)
+{
+	char *args[] = { argv0, "--help" };
+	fuse_main(sizeof(args)/sizeof(char *), args, &operations, NULL);
+	fprintf(stderr,
+		"\n"
+		"SQLiteFS Environment variables:\n"
+		"    EXEC=COMMAND           run the COMMAND in a shell (requires -f or -d)\n"
+		);
+}
+
 int main(int argc, char *argv[])
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	pthread_t t, main_thread = pthread_self();
+	int ret, foreground = 0;
 	sqlite3 *db;
-	int ret;
 
 	if (__strncmp(basename(argv[0]), "mkfs.sqlitefs") == 0) {
 		ret = mkfs("fs.db");
@@ -1860,15 +1877,21 @@ int main(int argc, char *argv[])
 		return EXIT_SUCCESS;
 	}
 
-	if (fuse_opt_parse(&args, NULL, sqlitefs_opts, sqlitefs_opt_proc)) {
-		char * args[] = { argv[0], "--help" };
-		fuse_main(sizeof(args)/sizeof(char *), args, &operations, NULL);
+	if (fuse_opt_parse(&args, &foreground, sqlitefs_opts,
+			   sqlitefs_opt_proc)) {
+		usage(argv[0]);
 		__exit_perror("fuse_opt_parse", EINVAL);
 	}
 
-	if (getenv("EXEC"))
+	if (getenv("EXEC")) {
+		if (!foreground && !DEBUG) {
+			usage(argv[0]);
+			__exit_perror("EXEC", EINVAL);
+		}
+
 		if (pthread_create(&t, NULL, start, &main_thread))
 			__exit("pthread_create");
+	}
 
 	if (sqlite3_open_v2("fs.db", &db, SQLITE_OPEN_READWRITE, NULL)) {
 		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
