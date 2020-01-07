@@ -10,7 +10,7 @@
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #else
-const char VERSION[] = __DATE__ " " __TIME__;
+const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #endif /* HAVE_CONFIG_H */
 
 #include <unistd.h>
@@ -1826,7 +1826,7 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 		exit(EXIT_SUCCESS);
 
 	case KEY_VERSION:
-		fprintf(stderr, "SQLiteFS version %s\n", VERSION);
+		fprintf(stderr, "SQLiteFS version %s\n", PACKAGE_VERSION);
 		fuse_opt_add_arg(outargs, arg);
 		fuse_main(outargs->argc, outargs->argv, &operations, NULL);
 		exit(EXIT_SUCCESS);
