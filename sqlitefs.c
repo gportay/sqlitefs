@@ -1877,6 +1877,9 @@ int main(int argc, char *argv[])
 	}
 
 	ret = fuse_main(argc, argv, &operations, db);
+	/* hack: returns success if fuse_main() was interrupted. */
+	if (ret == 7)
+		ret = 0;
 	if (ret) {
 		__fuse_main_perror("fuse_main", ret);
 		ret = EXIT_FAILURE;
