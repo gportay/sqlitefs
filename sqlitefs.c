@@ -70,11 +70,39 @@ static int DEBUG = 0;
 	exit(EXIT_FAILURE); \
 } while (0)
 
+#define __fuse_main_perror(s, e) do { \
+	fprintf(stderr, "%s: %s\n", s, __fuse_main_strerror(e)); \
+} while (0)
+
 #define __data(s) s, sizeof(s) - 1
 
 #define __sqlite3_perror(s, db) do { \
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
+
+static const char *__fuse_main_strerror(int err)
+{
+	switch (err) {
+	case 0:
+		return "Successful";
+	case 1:
+		return "Invalid option arguments";
+	case 2:
+		return "No mount point specified";
+	case 3:
+		return "FUSE setup failed";
+	case 4:
+		return "Mounting failed";
+	case 5:
+		return "Failed to daemonize (detach from session)";
+	case 6:
+		return "Failed to set up signal handlers";
+	case 7: 
+		return "An error occured during the life of the file system";
+	default:
+		return "Error";
+	}
+}
 
 static const char *mode_r(mode_t mode, char *buf, size_t bufsize)
 {
@@ -1849,6 +1877,10 @@ int main(int argc, char *argv[])
 	}
 
 	ret = fuse_main(argc, argv, &operations, db);
+	if (ret) {
+		__fuse_main_perror("fuse_main", ret);
+		ret = EXIT_FAILURE;
+	}
 
 	if (getenv("EXEC"))
 		if (pthread_join(t, NULL))
