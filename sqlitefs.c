@@ -1789,20 +1789,20 @@ static struct fuse_operations operations = {
 };
 
 enum {
-	KEY_DEBUG,
-	KEY_FOREGROUND,
 	KEY_HELP,
 	KEY_VERSION,
+	KEY_DEBUG,
+	KEY_FOREGROUND,
 };
 
 static struct fuse_opt sqlitefs_opts[] = {
+	FUSE_OPT_KEY("-h",		KEY_HELP),
+	FUSE_OPT_KEY("--help",		KEY_HELP),
+	FUSE_OPT_KEY("-V",		KEY_VERSION),
+	FUSE_OPT_KEY("--version",	KEY_VERSION),
 	FUSE_OPT_KEY("-d",              KEY_DEBUG),
 	FUSE_OPT_KEY("debug",           KEY_DEBUG),
 	FUSE_OPT_KEY("-f",              KEY_FOREGROUND),
-	FUSE_OPT_KEY("-V",		KEY_VERSION),
-	FUSE_OPT_KEY("--version",	KEY_VERSION),
-	FUSE_OPT_KEY("-h",		KEY_HELP),
-	FUSE_OPT_KEY("--help",		KEY_HELP),
 	FUSE_OPT_END
 };
 
