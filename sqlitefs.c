@@ -5,7 +5,7 @@
  *  SPDX-License-Identifier: LGPL-2.1
  */
 
-#define FUSE_USE_VERSION 30
+#define FUSE_USE_VERSION 34
 
 #ifdef HAVE_CONFIG_H
 # include "config.h"
