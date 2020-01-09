@@ -1882,6 +1882,7 @@ int main(int argc, char *argv[])
 		usage(argv[0]);
 		__exit_perror("fuse_opt_parse", EINVAL);
 	}
+	fuse_opt_free_args(&args);
 
 	if (getenv("EXEC")) {
 		if (!foreground && !DEBUG) {
