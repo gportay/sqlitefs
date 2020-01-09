@@ -278,13 +278,13 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 	return SQLITE_OK;
 }
 
-static int add_file(sqlite3 *db, const char *file, const char *parent,
-		    const void *data, size_t datasize, const struct stat *st)
+static int add_file(sqlite3 *db, const char *file, const void *data,
+		    size_t datasize, const struct stat *st)
 {
 	char sql[BUFSIZ];
 	int ret = -EIO;
 
-	if (!db || !file || !parent || !st)
+	if (!db || !file || !st)
 		return -EINVAL;
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
@@ -294,7 +294,7 @@ static int add_file(sqlite3 *db, const char *file, const char *parent,
 		 "st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", ?, %lu, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 file, parent, st->st_dev, st->st_ino, st->st_mode,
+		 file, "/", st->st_dev, st->st_ino, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, data ? datasize : 0,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -331,21 +331,20 @@ exit:
 	return ret;
 }
 
-static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
-		       const char *parent)
+static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 {
 	struct stat st;
 	char sql[BUFSIZ];
 	char *e;
 	int ret;
 
-	if (!db || !linkname || !path || !parent)
+	if (!db || !linkname || !path)
 		return -EINVAL;
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO symlinks(path, parent, "
 		 "linkname) "
 		 "VALUES(\"%s\", \"%s\", \"%s\");",
-		 path, parent, linkname);
+		 path, "/", linkname);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -364,7 +363,7 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
 	st.st_mtime = time(NULL);
 	st.st_ctime = time(NULL);
 
-	ret = add_file(db, path, "/", NULL, 0, &st);
+	ret = add_file(db, path, NULL, 0, &st);
 	if (ret) {
 		snprintf(sql, sizeof(sql), "DELETE FROM symlinks "
 					   "WHERE path=\"%s\";",
@@ -380,13 +379,12 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
 	return ret;
 }
 
-static int add_directory(sqlite3 *db, const char *file, const char *parent,
-			 const struct stat *st)
+static int add_directory(sqlite3 *db, const char *file, const struct stat *st)
 {
 	char sql[BUFSIZ];
 	char *e;
 
-	if (!db || !file || !parent || !st)
+	if (!db || !file || !st)
 		return -EINVAL;
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
@@ -395,7 +393,7 @@ static int add_directory(sqlite3 *db, const char *file, const char *parent,
 		 "st_mtim_sec, st_mtim_nsec, st_ctim_sec, st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", %lu, %lu, %u, %lu, %u, %u, %lu, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 file, parent, st->st_dev, st->st_ino, st->st_mode,
+		 file, "/", st->st_dev, st->st_ino, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, st->st_size,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -629,14 +627,14 @@ static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
 
 		memcpy(data + offset, buf, bufsize);
 
-		ret = add_file(db, path, "/", data, datasize, &st);
+		ret = add_file(db, path, data, datasize, &st);
 		if (ret)
 			goto exit;
 
 		goto exit;
 	}
 
-	ret = add_file(db, path, "/", buf, bufsize, &st);
+	ret = add_file(db, path, buf, bufsize, &st);
 	if (ret)
 		return ret;
 
@@ -736,7 +734,7 @@ static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 	st.st_atime = time(NULL);
 	st.st_mtime = time(NULL);
 	st.st_ctime = time(NULL);
-	if (add_file(db, path, "/", NULL, 0, &st))
+	if (add_file(db, path, NULL, 0, &st))
 		return -EIO;
 
 	return 0;
@@ -794,7 +792,7 @@ static int __unlink(sqlite3 *db, const char *path)
 
 static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 {
-	return add_symlink(db, linkname, path, "/");
+	return add_symlink(db, linkname, path);
 }
 
 static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
@@ -851,7 +849,7 @@ static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 	st.st_mtime = time(NULL);
 	st.st_ctime = time(NULL);
 
-	return add_directory(db, path, "/", &st);
+	return add_directory(db, path, &st);
 }
 
 static int mkfs(const char *path)
@@ -929,8 +927,8 @@ static int mkfs(const char *path)
 	st.st_atime = time(NULL);
 	st.st_mtime = time(NULL);
 	st.st_ctime = time(NULL);
-	if (add_file(db, "/autorun.inf", "/",
-		     __data("[autorun]\nlabel=sqlitefs\n"), &st))
+	if (add_file(db, "/autorun.inf", __data("[autorun]\nlabel=sqlitefs\n"),
+		     &st))
 		goto error;
 
 	return 0;
