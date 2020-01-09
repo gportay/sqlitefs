@@ -278,16 +278,16 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 	return SQLITE_OK;
 }
 
-static int add_file(sqlite3 *db, const char *file, const void *data,
+static int add_file(sqlite3 *db, const char *path, const void *data,
 		    size_t datasize, const struct stat *st)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
 	int ret = -EIO;
 
-	if (!db || !file || !st)
+	if (!db || !path || !st)
 		return -EINVAL;
 
-	strncpy(parent, file, sizeof(parent));
+	strncpy(parent, path, sizeof(parent));
 	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
@@ -297,7 +297,7 @@ static int add_file(sqlite3 *db, const char *file, const void *data,
 		 "st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", ?, %lu, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 file, parent, st->st_dev, st->st_ino, st->st_mode,
+		 path, parent, st->st_dev, st->st_ino, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, data ? datasize : 0,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -385,15 +385,15 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	return ret;
 }
 
-static int add_directory(sqlite3 *db, const char *file, const struct stat *st)
+static int add_directory(sqlite3 *db, const char *path, const struct stat *st)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
 	char *e;
 
-	if (!db || !file || !st)
+	if (!db || !path || !st)
 		return -EINVAL;
 
-	strncpy(parent, file, sizeof(parent));
+	strncpy(parent, path, sizeof(parent));
 	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
@@ -402,7 +402,7 @@ static int add_directory(sqlite3 *db, const char *file, const struct stat *st)
 		 "st_mtim_sec, st_mtim_nsec, st_ctim_sec, st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", %lu, %lu, %u, %lu, %u, %u, %lu, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 file, parent, st->st_dev, st->st_ino, st->st_mode,
+		 path, parent, st->st_dev, st->st_ino, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, st->st_size,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
