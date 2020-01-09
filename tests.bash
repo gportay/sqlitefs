@@ -194,7 +194,7 @@ else
 fi
 echo
 
-run "Copy file"
+run "Copy file (to top-level directory)"
 if cp README.md mountpoint/ &&
    test -e mountpoint/README.md
 then
@@ -204,7 +204,7 @@ else
 fi
 echo
 
-run "Remove file"
+run "Remove file (from top-level directory)"
 if rm mountpoint/README.md &&
    ! test -e mountpoint/README.md
 then
@@ -214,7 +214,7 @@ else
 fi
 echo
 
-run "Make directory"
+run "Make directory (to top-level directory)"
 if mkdir -p mountpoint/dir &&
    test -d mountpoint/dir
 then
@@ -224,7 +224,47 @@ else
 fi
 echo
 
-run "Remove directory"
+run "Copy file (to none-top-level directory)"
+if cp README.md mountpoint/dir &&
+   test -e mountpoint/dir/README.md
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Remove file (from none-top-level directory)"
+if rm mountpoint/dir/README.md &&
+   ! test -e mountpoint/dir/README.md
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Make directory (to none-top-level directory)"
+if mkdir -p mountpoint/dir/dir2 &&
+   test -d mountpoint/dir/dir2
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Remove directory (from none-top-level directory)"
+if rmdir mountpoint/dir/dir2 &&
+   ! test -d mountpoint/dir/dir2
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Remove directory (from top-level directory)"
 if rmdir mountpoint/dir &&
    ! test -d mountpoint/dir
 then
