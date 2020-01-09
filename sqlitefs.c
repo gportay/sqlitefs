@@ -28,6 +28,8 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <sqlite3.h>
 #include <pthread.h>
 
+#include <linux/limits.h>
+
 #include "hexdump.h"
 
 static int DEBUG = 0;
@@ -281,11 +283,14 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 static int add_file(sqlite3 *db, const char *file, const void *data,
 		    size_t datasize, const struct stat *st)
 {
-	char sql[BUFSIZ];
+	char sql[BUFSIZ], parent[PATH_MAX];
 	int ret = -EIO;
 
 	if (!db || !file || !st)
 		return -EINVAL;
+
+	strncpy(parent, file, sizeof(parent));
+	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
 		 "data, st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, "
@@ -294,7 +299,7 @@ static int add_file(sqlite3 *db, const char *file, const void *data,
 		 "st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", ?, %lu, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 file, "/", st->st_dev, st->st_ino, st->st_mode,
+		 file, parent, st->st_dev, st->st_ino, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, data ? datasize : 0,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -333,18 +338,21 @@ exit:
 
 static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 {
+	char sql[BUFSIZ], parent[PATH_MAX];
 	struct stat st;
-	char sql[BUFSIZ];
 	char *e;
 	int ret;
 
 	if (!db || !linkname || !path)
 		return -EINVAL;
 
+	strncpy(parent, path, sizeof(parent));
+	dirname(parent);
+
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO symlinks(path, parent, "
 		 "linkname) "
 		 "VALUES(\"%s\", \"%s\", \"%s\");",
-		 path, "/", linkname);
+		 path, parent, linkname);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -381,11 +389,14 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 
 static int add_directory(sqlite3 *db, const char *file, const struct stat *st)
 {
-	char sql[BUFSIZ];
+	char sql[BUFSIZ], parent[PATH_MAX];
 	char *e;
 
 	if (!db || !file || !st)
 		return -EINVAL;
+
+	strncpy(parent, file, sizeof(parent));
+	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
 		 "st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
@@ -393,7 +404,7 @@ static int add_directory(sqlite3 *db, const char *file, const struct stat *st)
 		 "st_mtim_sec, st_mtim_nsec, st_ctim_sec, st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", %lu, %lu, %u, %lu, %u, %u, %lu, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 file, "/", st->st_dev, st->st_ino, st->st_mode,
+		 file, parent, st->st_dev, st->st_ino, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, st->st_size,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
