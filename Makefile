@@ -56,6 +56,11 @@ shell: export EXEC = $(SHELL)
 shell: sqlitefs | mountpoint fs.db
 	./sqlitefs -f mountpoint
 
+.PHONY: debug-shell
+debug-shell: export EXEC = $(SHELL)
+debug-shell: sqlitefs | mountpoint fs.db
+	./sqlitefs -d mountpoint
+
 .PHONY: clean
 clean:
 	rm -f sqlitefs mkfs.sqlitefs fs.db failed.db
