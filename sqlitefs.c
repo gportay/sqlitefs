@@ -268,16 +268,12 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 {
 	struct readdir_data *pdata = (struct readdir_data *)data;
 	size_t len;
-	int i;
+	(void)argc;	
 	(void)colname;
 
 	len = strlen(pdata->parent);
-	for (i = 0; i < argc; i++) {
-		if (strcmp(pdata->parent, argv[0]) == 0)
-			continue;
-
+	if (strcmp(pdata->parent, argv[0]) != 0)
 		pdata->filler(pdata->buffer, &argv[0][len], NULL, 0, 0);
-	}
 
 	return SQLITE_OK;
 }
