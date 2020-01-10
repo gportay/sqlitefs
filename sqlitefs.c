@@ -904,6 +904,28 @@ static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 	return add_directory(db, path, &st);
 }
 
+static int __mkdir_lost_found(sqlite3 *db)
+{
+	struct stat st;
+	const char *path = "/.lost+found";
+	int ret;
+
+	if (!db)
+		return -EINVAL;
+
+	ret = __stat(db, path, &st);
+	if (ret == 0)
+		return 0;
+	else if (ret != -ENOENT)
+		return ret;
+
+	ret = __mkdir(db, path, 0755);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 static int mkfs(const char *path)
 {
 	char sql[BUFSIZ];
@@ -965,7 +987,7 @@ static int mkfs(const char *path)
 	if (__mkdir(db, "/", 0755))
 		goto error;
 
-	if (__mkdir(db, "/.Trash", 0755))
+	if (__mkdir_lost_found(db))
 		goto error;
 
 	memset(&st, 0, sizeof(struct stat));

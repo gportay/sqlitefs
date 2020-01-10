@@ -79,7 +79,7 @@ then
 label=sqlitefs
 EOF
 
-	mkdir -p mountpoint/.Trash
+	mkdir -p mountpoint/.lost+found
 else
 	sqlitefs -f mountpoint/ &
 	while ! mountpoint --quiet mountpoint
@@ -100,6 +100,15 @@ echo
 
 run "Test file existance"
 if test -e mountpoint/autorun.inf | tee /dev/stderr
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Test directory existance"
+if test -d mountpoint/.lost+found
 then
 	ok
 else
