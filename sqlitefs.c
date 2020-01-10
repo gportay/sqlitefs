@@ -278,6 +278,49 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 	return SQLITE_OK;
 }
 
+struct orphan_data {
+	int count;
+};
+
+static int orphan_cb(void *data, int argc, char **argv, char **colname)
+{
+	struct orphan_data *pdata = (struct orphan_data *)data;
+	(void)argc;	
+	(void)colname;
+
+	fprintf(stderr, "%s\n", argv[0]);
+	pdata->count++;
+
+	return SQLITE_OK;
+}
+
+static int lost_found(sqlite3 *db)
+{
+	struct orphan_data data = {
+		.count = 0,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "SELECT path "
+				   "FROM files "
+				   "WHERE parent NOT IN ("
+				  	"SELECT path FROM files"
+				   ");");
+	ret = sqlite3_exec(db, sql, orphan_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return data.count;
+}
+
 static int add_file(sqlite3 *db, const char *path, const void *data,
 		    size_t datasize, const struct stat *st)
 {
@@ -1044,6 +1087,11 @@ static int sqlitefs_rmdir(const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
+	/* TODO: The rmdir() function shall remove a directory whose name is
+	 * given by path. The directory shall be removed only if it is an empty
+	 * directory.
+	 */
+
 	return __unlink(db, path);
 }
 
@@ -1733,6 +1781,14 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
 		sqlite3_close(db);
 		__exit_perror("fs.db", EIO);
+	}
+
+	ret = lost_found(db);
+	if (ret < 0) {
+		sqlite3_close(db);
+		__exit_perror("lost_found", -ret);
+	} else if (ret) {
+		fprintf(stderr, "%i orphans found!\n", ret);
 	}
 
 	ret = fuse_main(argc, argv, &operations, db);

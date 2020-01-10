@@ -264,6 +264,19 @@ else
 fi
 echo
 
+run "Do not make an orphan directory"
+if mkdir -p mountpoint/dir/subdir/orphan &&
+   test -d mountpoint/dir/subdir/orphan &&
+   ! rmdir mountpoint/dir/subdir &&
+   rmdir mountpoint/dir/subdir/orphan &&
+   rmdir mountpoint/dir/subdir
+then
+	ok
+else
+	todo
+fi
+echo
+
 run "Remove directory (from top-level directory)"
 if rmdir mountpoint/dir &&
    ! test -d mountpoint/dir
