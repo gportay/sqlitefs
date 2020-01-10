@@ -990,21 +990,6 @@ static int mkfs(const char *path)
 	if (__mkdir_lost_found(db))
 		goto error;
 
-	memset(&st, 0, sizeof(struct stat));
-	/* Ignored st.st_dev = 0; */
-	/* Ignored st.st_ino = 0; */
-	st.st_mode = S_IFREG | 0644;
-	st.st_nlink = 1;
-	st.st_uid = getuid();
-	st.st_gid = getgid();
-	/* Ignored st.st_blksize = 0; */
-	st.st_atime = time(NULL);
-	st.st_mtime = time(NULL);
-	st.st_ctime = time(NULL);
-	if (add_file(db, "/autorun.inf", __data("[autorun]\nlabel=sqlitefs\n"),
-		     &st))
-		goto error;
-
 	return 0;
 
 error:

@@ -74,10 +74,6 @@ then
 	todo() {
 		ko
 	}
-	cat <<EOF >mountpoint/autorun.inf
-[autorun]
-label=sqlitefs
-EOF
 
 	mkdir -p mountpoint/.lost+found
 else
@@ -89,17 +85,8 @@ else
 fi
 
 run "List directory content"
-if ls -1 mountpoint | tee /dev/stderr | \
-   grep autorun.inf
-then
-	ok
-else
-	ko
-fi
-echo
-
-run "Test file existance"
-if test -e mountpoint/autorun.inf | tee /dev/stderr
+if ls -1a mountpoint | tee /dev/stderr | \
+   grep '.lost+found'
 then
 	ok
 else
@@ -109,16 +96,6 @@ echo
 
 run "Test directory existance"
 if test -d mountpoint/.lost+found
-then
-	ok
-else
-	ko
-fi
-echo
-
-run "Concatenate file"
-if cat mountpoint/autorun.inf | tee /dev/stderr | md5sum |
-   grep -q '^ef86bb7c399ba701ef65c96a21f383da  -$'
 then
 	ok
 else

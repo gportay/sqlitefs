@@ -44,7 +44,7 @@ no-mount-tests: fs.db
 
 .PHONY: mount
 mount: sqlitefs | mountpoint fs.db
-	@echo "Note: You can run \$$ cat mountpoint/autorun.inf"
+	@echo "Note: You can run \$$ ls -al mountpoint/"
 	./sqlitefs -f mountpoint
 
 .PHONY: umount
