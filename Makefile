@@ -8,12 +8,13 @@
 override CFLAGS += $(shell pkg-config sqlite3 fuse3 --cflags)
 override LDLIBS += $(shell pkg-config sqlite3 fuse3 --libs)
 
-all: sqlitefs mkfs.sqlitefs
+all: sqlitefs mkfs.sqlitefs fsck.sqlitefs
 
 .PHONY: doc
 doc: sqlitefs.1.gz
 
-mkfs.sqlitefs: | sqlitefs
+mkfs.sqlitefs fsck.sqlitefs:
+%.sqlitefs %.sqlitefs: | sqlitefs
 	ln -sf sqlitefs $@
 
 sqlitefs: override CFLAGS += -g -Wall -Wextra -Werror

@@ -1767,6 +1767,14 @@ int main(int argc, char *argv[])
 		return EXIT_SUCCESS;
 	}
 
+	if (__strncmp(basename(argv[0]), "fsck.sqlitefs") == 0) {
+		ret = system("sqlitefs-fsck");
+		if (ret)
+			__exit_perror("system", -ret);
+
+		return WEXITSTATUS(ret);
+	}
+
 	if (fuse_opt_parse(&args, &foreground, sqlitefs_opts,
 			   sqlitefs_opt_proc)) {
 		usage(argv[0]);
