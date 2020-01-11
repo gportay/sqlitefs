@@ -1862,6 +1862,12 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 			goto out3;
 		}
 
+		if (setenv("mountpoint", opts.mountpoint, 1)) {
+			perror("chdir");
+			res = 5;
+			goto out3;
+		}
+
 		if (pthread_create(&t, NULL, start, &main_thread)) {
 			perror("pthread_create");
 			res = 5;
