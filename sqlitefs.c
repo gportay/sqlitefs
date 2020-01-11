@@ -997,6 +997,23 @@ error:
 	return -EIO;
 }
 
+static int fsck(const char *path)
+{
+	int ret;
+
+	if (!path)
+		return -EINVAL;
+
+	ret = system("sqlitefs-fsck");
+	if (ret == -1)
+		__exit_perror("system", -ret);
+
+	if (WIFEXITED(ret))
+		return WEXITSTATUS(ret);
+
+	return ret;
+}
+
 /**
  * The file system operations:
  *
@@ -1770,14 +1787,11 @@ int main(int argc, char *argv[])
 	}
 
 	if (__strncmp(basename(argv[0]), "fsck.sqlitefs") == 0) {
-		ret = system("sqlitefs-fsck");
-		if (ret == -1)
-			__exit_perror("system", -ret);
+		ret = fsck("fs.db");
+		if (ret)
+			__exit_perror("fs.db", -ret);
 
-		if (WIFEXITED(ret))
-			return WEXITSTATUS(ret);
-
-		return ret;
+		return EXIT_SUCCESS;
 	}
 
 	if (fuse_opt_parse(&args, &foreground, sqlitefs_opts,
