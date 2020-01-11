@@ -1731,13 +1731,15 @@ static void *start(void *arg)
 	static int ret;
 
 	ret = system(getenv("EXEC"));
-	if (ret)
+	if (ret == -1)
 		perror("system");
 
 	if (pthread_kill(main_thread, SIGTERM))
 		perror("ptrhead_kill");
 
-	ret = WEXITSTATUS(ret);
+	if (WIFEXITED(ret))
+		ret = WEXITSTATUS(ret);
+
 	return &ret;
 }
 
@@ -1769,10 +1771,13 @@ int main(int argc, char *argv[])
 
 	if (__strncmp(basename(argv[0]), "fsck.sqlitefs") == 0) {
 		ret = system("sqlitefs-fsck");
-		if (ret)
+		if (ret == -1)
 			__exit_perror("system", -ret);
 
-		return WEXITSTATUS(ret);
+		if (WIFEXITED(ret))
+			return WEXITSTATUS(ret);
+
+		return ret;
 	}
 
 	if (fuse_opt_parse(&args, &foreground, sqlitefs_opts,
