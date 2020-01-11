@@ -1853,6 +1853,15 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	}
 
 	if (getenv("EXEC")) {
+		/* hack: make the process get back to $PWD.
+		 * The function fuse_daemonize() chdir to / even in foreground.
+		 */
+		if (chdir(getenv("PWD"))) {
+			perror("chdir");
+			res = 5;
+			goto out3;
+		}
+
 		if (pthread_create(&t, NULL, start, &main_thread)) {
 			perror("pthread_create");
 			res = 5;
