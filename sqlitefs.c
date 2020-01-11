@@ -16,6 +16,7 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
@@ -25,10 +26,12 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 
 #include <libgen.h>
 #include <fuse.h>
+#include <fuse_lowlevel.h>
 #include <sqlite3.h>
 #include <pthread.h>
 
 #include <linux/limits.h>
+#include <linux/fs.h>
 
 #include "hexdump.h"
 
@@ -1695,51 +1698,59 @@ static struct fuse_operations operations = {
 	/* .copy_file_range */
 };
 
-enum {
-	KEY_HELP,
-	KEY_VERSION,
-	KEY_DEBUG,
-	KEY_FOREGROUND,
-};
+#define FUSE_HELPER_OPT(t, p) \
+	{ t, offsetof(struct fuse_cmdline_opts, p), 1 }
 
-static struct fuse_opt sqlitefs_opts[] = {
-	FUSE_OPT_KEY("-h",		KEY_HELP),
-	FUSE_OPT_KEY("--help",		KEY_HELP),
-	FUSE_OPT_KEY("-V",		KEY_VERSION),
-	FUSE_OPT_KEY("--version",	KEY_VERSION),
-	FUSE_OPT_KEY("-d",              KEY_DEBUG),
-	FUSE_OPT_KEY("debug",           KEY_DEBUG),
-	FUSE_OPT_KEY("-f",              KEY_FOREGROUND),
+static const struct fuse_opt sqlitefs_opts[] = {
+	FUSE_HELPER_OPT("-h",		show_help),
+	FUSE_HELPER_OPT("--help",	show_help),
+	FUSE_HELPER_OPT("-V",		show_version),
+	FUSE_HELPER_OPT("--version",	show_version),
+	FUSE_HELPER_OPT("-d",		debug),
+	FUSE_HELPER_OPT("debug",	debug),
+	FUSE_HELPER_OPT("-d",		foreground),
+	FUSE_HELPER_OPT("debug",	foreground),
+	FUSE_OPT_KEY("-d",		FUSE_OPT_KEY_KEEP),
+	FUSE_OPT_KEY("debug",		FUSE_OPT_KEY_KEEP),
+	FUSE_HELPER_OPT("-f",		foreground),
+	FUSE_HELPER_OPT("-s",		singlethread),
+	FUSE_HELPER_OPT("fsname=",	nodefault_subtype),
+	FUSE_OPT_KEY("fsname=",		FUSE_OPT_KEY_KEEP),
+#ifndef __FreeBSD__
+	FUSE_HELPER_OPT("subtype=",	nodefault_subtype),
+	FUSE_OPT_KEY("subtype=",	FUSE_OPT_KEY_KEEP),
+#endif
+	FUSE_HELPER_OPT("clone_fd",	clone_fd),
+	FUSE_HELPER_OPT("max_idle_threads=%u", max_idle_threads),
 	FUSE_OPT_END
 };
 
 static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 			     struct fuse_args *outargs)
 {
-	int *foreground = (int *)data;
+	(void) outargs;
+	struct fuse_cmdline_opts *opts = data;
 
 	switch (key) {
-	case KEY_FOREGROUND:
-		*foreground = 1;
-		break;
+	case FUSE_OPT_KEY_NONOPT:
+		if (!opts->mountpoint) {
+			char mountpoint[PATH_MAX] = "";
+			if (realpath(arg, mountpoint) == NULL) {
+				fuse_log(FUSE_LOG_ERR,
+					"fuse: bad mount point `%s': %s\n",
+					arg, strerror(errno));
+				return -1;
+			}
+			return fuse_opt_add_opt(&opts->mountpoint, mountpoint);
+		} else {
+			fuse_log(FUSE_LOG_ERR, "fuse: invalid argument `%s'\n", arg);
+			return -1;
+		}
 
-	case KEY_DEBUG:
-		DEBUG++;
-		break;
-
-	case KEY_HELP:
-		fuse_opt_add_arg(outargs, arg);
-		fuse_main(outargs->argc, outargs->argv, &operations, NULL);
-		exit(EXIT_SUCCESS);
-
-	case KEY_VERSION:
-		fprintf(stderr, "SQLiteFS version %s\n", PACKAGE_VERSION);
-		fuse_opt_add_arg(outargs, arg);
-		fuse_main(outargs->argc, outargs->argv, &operations, NULL);
-		exit(EXIT_SUCCESS);
+	default:
+		/* Pass through unknown options */
+		return 1;
 	}
-
-	return 1;
 }
 
 static void *start(void *arg)
@@ -1760,10 +1771,8 @@ static void *start(void *arg)
 	return &ret;
 }
 
-static void usage(char *argv0)
+static void sqlitefs_cmdline_help()
 {
-	char *args[] = { argv0, "--help" };
-	fuse_main(sizeof(args)/sizeof(char *), args, &operations, NULL);
 	fprintf(stderr,
 		"\n"
 		"SQLiteFS Environment variables:\n"
@@ -1771,12 +1780,121 @@ static void usage(char *argv0)
 		);
 }
 
-int main(int argc, char *argv[])
+int sqlitefs_parse_cmdline(struct fuse_args *args,
+			   struct fuse_cmdline_opts *opts)
+{
+	memset(opts, 0, sizeof(struct fuse_cmdline_opts));
+
+	opts->max_idle_threads = 10;
+
+	return fuse_opt_parse(args, opts, sqlitefs_opts, sqlitefs_opt_proc);
+}
+
+int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
+		  size_t op_size, void *user_data)
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	pthread_t t, main_thread = pthread_self();
-	int ret, foreground = 0;
+	struct fuse_cmdline_opts opts;
+	struct fuse *fuse;
+	int res;
+
+	if (sqlitefs_parse_cmdline(&args, &opts) != 0)
+		return 1;
+
+	if (opts.show_version) {
+		printf("FUSE library version %s\n", PACKAGE_VERSION);
+		fuse_lowlevel_version();
+		res = 0;
+		goto out1;
+	}
+
+	if (opts.show_help) {
+		if(args.argv[0][0] != '\0')
+			printf("usage: %s [options] <mountpoint>\n\n",
+			       args.argv[0]);
+		printf("FUSE options:\n");
+		fuse_cmdline_help();
+		fuse_lib_help(&args);
+		sqlitefs_cmdline_help();
+		res = 0;
+		goto out1;
+	}
+
+	if (!opts.show_help &&
+	    !opts.mountpoint) {
+		fuse_log(FUSE_LOG_ERR, "error: no mountpoint specified\n");
+		res = 2;
+		goto out1;
+	}
+
+	if (getenv("EXEC")) {
+		if (!opts.foreground && !opts.debug) {
+			fuse_log(FUSE_LOG_ERR, "error: foreground or debug not specified\n");
+			res = 2;
+			goto out1;
+		}
+	}
+
+	fuse = fuse_new(&args, op, op_size, user_data);
+	if (fuse == NULL) {
+		res = 3;
+		goto out1;
+	}
+
+	if (fuse_mount(fuse,opts.mountpoint) != 0) {
+		res = 4;
+		goto out2;
+	}
+
+	if (fuse_daemonize(opts.foreground) != 0) {
+		res = 5;
+		goto out3;
+	}
+
+	if (getenv("EXEC")) {
+		if (pthread_create(&t, NULL, start, &main_thread)) {
+			perror("pthread_create");
+			res = 5;
+			goto out3;
+		}
+	}
+
+	struct fuse_session *se = fuse_get_session(fuse);
+	if (fuse_set_signal_handlers(se) != 0) {
+		res = 6;
+		goto out3;
+	}
+
+	if (opts.singlethread)
+		res = fuse_loop(fuse);
+	else {
+		struct fuse_loop_config loop_config;
+		loop_config.clone_fd = opts.clone_fd;
+		loop_config.max_idle_threads = opts.max_idle_threads;
+		res = fuse_loop_mt(fuse, &loop_config);
+	}
+	if (res)
+		res = 7;
+
+	fuse_remove_signal_handlers(se);
+out3:
+	fuse_unmount(fuse);
+out2:
+	fuse_destroy(fuse);
+out1:
+	free(opts.mountpoint);
+	fuse_opt_free_args(&args);
+	if (getenv("EXEC"))
+		if (pthread_join(t, NULL))
+			perror("pthread_join");
+	return res;
+}
+
+int main(int argc, char *argv[])
+{
 	sqlite3 *db;
+	int ret;
 
 	if (__strncmp(basename(argv[0]), "mkfs.sqlitefs") == 0) {
 		ret = mkfs("fs.db");
@@ -1794,23 +1912,6 @@ int main(int argc, char *argv[])
 		return EXIT_SUCCESS;
 	}
 
-	if (fuse_opt_parse(&args, &foreground, sqlitefs_opts,
-			   sqlitefs_opt_proc)) {
-		usage(argv[0]);
-		__exit_perror("fuse_opt_parse", EINVAL);
-	}
-	fuse_opt_free_args(&args);
-
-	if (getenv("EXEC")) {
-		if (!foreground && !DEBUG) {
-			usage(argv[0]);
-			__exit_perror("EXEC", EINVAL);
-		}
-
-		if (pthread_create(&t, NULL, start, &main_thread))
-			__exit("pthread_create");
-	}
-
 	if (sqlite3_open_v2("fs.db", &db, SQLITE_OPEN_READWRITE, NULL)) {
 		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
 		sqlite3_close(db);
@@ -1825,7 +1926,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "%i orphans found!\n", ret);
 	}
 
-	ret = fuse_main(argc, argv, &operations, db);
+	ret = sqlitefs_main(argc, argv, &operations, sizeof(operations), db);
 	/* hack: returns success if fuse_main() was interrupted. */
 	if (ret == 7)
 		ret = 0;
@@ -1833,10 +1934,6 @@ int main(int argc, char *argv[])
 		__fuse_main_perror("fuse_main", ret);
 		ret = EXIT_FAILURE;
 	}
-
-	if (getenv("EXEC"))
-		if (pthread_join(t, NULL))
-			perror("pthread_join");
 
 	return ret;
 }
