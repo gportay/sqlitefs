@@ -1725,6 +1725,19 @@ static const struct fuse_opt sqlitefs_opts[] = {
 	FUSE_OPT_END
 };
 
+int fuse_mnt_parse_fuse_fd(const char *mountpoint)
+{
+	int fd = -1;
+	size_t len = 0;
+
+	if (sscanf(mountpoint, "/dev/fd/%u%ln", &fd, &len) == 1 &&
+	    len == strlen(mountpoint)) {
+		return fd;
+	}
+
+	return -1;
+}
+
 static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 			     struct fuse_args *outargs)
 {
@@ -1734,6 +1747,10 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 	switch (key) {
 	case FUSE_OPT_KEY_NONOPT:
 		if (!opts->mountpoint) {
+			if (fuse_mnt_parse_fuse_fd(arg) != -1) {
+				return fuse_opt_add_opt(&opts->mountpoint, arg);
+			}
+
 			char mountpoint[PATH_MAX] = "";
 			if (realpath(arg, mountpoint) == NULL) {
 				fuse_log(FUSE_LOG_ERR,
@@ -1780,6 +1797,33 @@ static void sqlitefs_cmdline_help()
 		);
 }
 
+/* Under FreeBSD, there is no subtype option so this
+   function actually sets the fsname */
+static int add_default_subtype(const char *progname, struct fuse_args *args)
+{
+	int res;
+	char *subtype_opt;
+
+	const char *basename = strrchr(progname, '/');
+	if (basename == NULL)
+		basename = progname;
+	else if (basename[1] != '\0')
+		basename++;
+
+	subtype_opt = (char *) malloc(strlen(basename) + 64);
+	if (subtype_opt == NULL) {
+		fuse_log(FUSE_LOG_ERR, "fuse: memory allocation failed\n");
+		return -1;
+	}
+#ifdef __FreeBSD__
+	sprintf(subtype_opt, "-ofsname=%s", basename);
+#else
+	sprintf(subtype_opt, "-osubtype=%s", basename);
+#endif
+	res = fuse_opt_add_arg(args, subtype_opt);
+	free(subtype_opt);
+	return res;
+}
 int sqlitefs_parse_cmdline(struct fuse_args *args,
 			   struct fuse_cmdline_opts *opts)
 {
@@ -1787,7 +1831,18 @@ int sqlitefs_parse_cmdline(struct fuse_args *args,
 
 	opts->max_idle_threads = 10;
 
-	return fuse_opt_parse(args, opts, sqlitefs_opts, sqlitefs_opt_proc);
+	if (fuse_opt_parse(args, opts, sqlitefs_opts, sqlitefs_opt_proc) == -1)
+		return -1;
+
+	/* *Linux*: if neither -o subtype nor -o fsname are specified,
+	   set subtype to program's basename.
+	   *FreeBSD*: if fsname is not specified, set to program's
+	   basename. */
+	if (!opts->nodefault_subtype)
+		if (add_default_subtype(args->argv[0], args) == -1)
+			return -1;
+
+	return 0;
 }
 
 int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
