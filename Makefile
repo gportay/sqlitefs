@@ -62,9 +62,30 @@ debug-shell: export EXEC = $(SHELL)
 debug-shell: sqlitefs | mountpoint fs.db
 	./sqlitefs -d mountpoint
 
+.PHONY: docker-shell
+docker-shell: SHELL = /bin/bash
+docker-shell: sqlitefs.iid
+	docker run --rm --interactive --tty \
+	           --privileged --cap-add SYS_ADMIN --cap-add MKNOD --device /dev/fuse \
+	           --volume $$PWD:$$PWD \
+	           --user $$UID:$$UID \
+	           --workdir $$PWD \
+	           --entrypoint $$SHELL \
+		   sqlitefs
+
 .PHONY: clean
 clean:
 	rm -f sqlitefs mkfs.sqlitefs fs.db failed.db
+
+%.: SHELL = /bin/bash
+%.iid: Dockerfile
+	docker build --tag $* \
+		     --iidfile $@ \
+	             --build-arg user=$$USER \
+	             --build-arg uid=$$UID \
+	             --build-arg groups=$${GROUPS[0]} \
+	             --build-arg home=$$HOME \
+	             - <Dockerfile
 
 PREPROCESS.c = $(CC) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -E
 %.i: %.c
