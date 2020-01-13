@@ -1,0 +1,2 @@
+DOSH_DOCKER_RUN_EXTRA_OPTS+=" --privileged --cap-add SYS_ADMIN --cap-add MKNOD --device /dev/fuse"
+DOSH_DOCKER_BUILD_EXTRA_OPTS+=" --build-arg user=$USER --build-arg uid=$UID --build-arg groups=$GROUPS --build-arg home=$HOME"
