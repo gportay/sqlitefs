@@ -21,7 +21,7 @@ sqlitefs: override CFLAGS += -g -Wall -Wextra -Werror
 sqlitefs:
 
 fs.db: | mkfs.sqlitefs
-	./mkfs.sqlitefs
+	./mkfs.sqlitefs $@
 
 mountpoint:
 	mkdir -p $@
@@ -46,7 +46,7 @@ no-mount-tests: fs.db
 .PHONY: mount
 mount: sqlitefs | mountpoint fs.db
 	@echo "Note: You can run \$$ ls -al mountpoint/"
-	./sqlitefs -f mountpoint
+	./sqlitefs -f fs.db mountpoint
 
 .PHONY: umount
 umount:
@@ -55,12 +55,12 @@ umount:
 .PHONY: shell
 shell: export EXEC = $(SHELL)
 shell: sqlitefs | mountpoint fs.db
-	./sqlitefs -f mountpoint
+	./sqlitefs -f fs.db mountpoint
 
 .PHONY: debug-shell
 debug-shell: export EXEC = $(SHELL)
 debug-shell: sqlitefs | mountpoint fs.db
-	./sqlitefs -d mountpoint
+	./sqlitefs -d fs.db mountpoint
 
 .PHONY: docker-shell
 docker-shell: SHELL = /bin/bash

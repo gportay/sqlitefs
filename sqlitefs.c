@@ -75,6 +75,10 @@ static int DEBUG = 0;
 	exit(EXIT_FAILURE); \
 } while (0)
 
+#define __perror(s, e) do { \
+	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
+} while (0)
+
 #define __fuse_main_perror(s, e) do { \
 	fprintf(stderr, "%s: %s\n", s, __fuse_main_strerror(e)); \
 } while (0)
@@ -1698,6 +1702,11 @@ static struct fuse_operations operations = {
 	/* .copy_file_range */
 };
 
+struct sqlitefs_cmdline_opts {
+	struct fuse_cmdline_opts base;
+	char *file;
+};
+
 #define FUSE_HELPER_OPT(t, p) \
 	{ t, offsetof(struct fuse_cmdline_opts, p), 1 }
 
@@ -1742,11 +1751,14 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 			     struct fuse_args *outargs)
 {
 	(void) outargs;
+	struct sqlitefs_cmdline_opts *sqlitefs_opts = data;
 	struct fuse_cmdline_opts *opts = data;
 
 	switch (key) {
 	case FUSE_OPT_KEY_NONOPT:
-		if (!opts->mountpoint) {
+		if (!sqlitefs_opts->file) {
+			return fuse_opt_add_opt(&sqlitefs_opts->file, arg);
+		} else if (!opts->mountpoint) {
 			if (fuse_mnt_parse_fuse_fd(arg) != -1) {
 				return fuse_opt_add_opt(&opts->mountpoint, arg);
 			}
@@ -1824,12 +1836,14 @@ static int add_default_subtype(const char *progname, struct fuse_args *args)
 	free(subtype_opt);
 	return res;
 }
-int sqlitefs_parse_cmdline(struct fuse_args *args,
-			   struct fuse_cmdline_opts *opts)
-{
-	memset(opts, 0, sizeof(struct fuse_cmdline_opts));
 
-	opts->max_idle_threads = 10;
+int sqlitefs_parse_cmdline(struct fuse_args *args,
+			   struct sqlitefs_cmdline_opts *opts)
+{
+	memset(opts, 0, sizeof(struct sqlitefs_cmdline_opts));
+
+	opts->base.max_idle_threads = 10;
+	opts->file = NULL;
 
 	if (fuse_opt_parse(args, opts, sqlitefs_opts, sqlitefs_opt_proc) == -1)
 		return -1;
@@ -1838,7 +1852,7 @@ int sqlitefs_parse_cmdline(struct fuse_args *args,
 	   set subtype to program's basename.
 	   *FreeBSD*: if fsname is not specified, set to program's
 	   basename. */
-	if (!opts->nodefault_subtype)
+	if (!opts->base.nodefault_subtype)
 		if (add_default_subtype(args->argv[0], args) == -1)
 			return -1;
 
@@ -1849,24 +1863,27 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		  size_t op_size, void *user_data)
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+	struct sqlitefs_cmdline_opts sqlitefs_opts;
 	pthread_t t, main_thread = pthread_self();
-	struct fuse_cmdline_opts opts;
+	struct fuse_cmdline_opts *opts;
 	struct fuse *fuse;
+	sqlite3 *db;
 	int res;
 
-	if (sqlitefs_parse_cmdline(&args, &opts) != 0)
+	opts = (struct fuse_cmdline_opts *)&sqlitefs_opts;
+	if (sqlitefs_parse_cmdline(&args, &sqlitefs_opts) != 0)
 		return 1;
 
-	if (opts.show_version) {
+	if (opts->show_version) {
 		printf("FUSE library version %s\n", PACKAGE_VERSION);
 		fuse_lowlevel_version();
 		res = 0;
 		goto out1;
 	}
 
-	if (opts.show_help) {
+	if (opts->show_help) {
 		if(args.argv[0][0] != '\0')
-			printf("usage: %s [options] <mountpoint>\n\n",
+			printf("usage: %s [options] <file> <mountpoint>\n\n",
 			       args.argv[0]);
 		printf("FUSE options:\n");
 		fuse_cmdline_help();
@@ -1876,15 +1893,41 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		goto out1;
 	}
 
-	if (!opts.show_help &&
-	    !opts.mountpoint) {
+	if (!opts->show_help &&
+	    !sqlitefs_opts.file) {
+		fuse_log(FUSE_LOG_ERR, "error: no file specified\n");
+		res = 2;
+		goto out1;
+	}
+
+	if (sqlite3_open_v2(sqlitefs_opts.file, &db, SQLITE_OPEN_READWRITE,
+			    NULL)) {
+		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
+		res = 2;
+		goto out1;
+	}
+
+	user_data = db;
+
+	res = lost_found(db);
+	if (res < 0) {
+		__perror("lost_found", res);
+		res = 2;
+		goto out1;
+	} else if (res) {
+		fprintf(stderr, "%i orphans found!\n", res);
+		res = 0;
+	}
+
+	if (!opts->show_help &&
+	    !opts->mountpoint) {
 		fuse_log(FUSE_LOG_ERR, "error: no mountpoint specified\n");
 		res = 2;
 		goto out1;
 	}
 
 	if (getenv("EXEC")) {
-		if (!opts.foreground && !opts.debug) {
+		if (!opts->foreground && !opts->debug) {
 			fuse_log(FUSE_LOG_ERR, "error: foreground or debug not specified\n");
 			res = 2;
 			goto out1;
@@ -1897,12 +1940,12 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		goto out1;
 	}
 
-	if (fuse_mount(fuse,opts.mountpoint) != 0) {
+	if (fuse_mount(fuse,opts->mountpoint) != 0) {
 		res = 4;
 		goto out2;
 	}
 
-	if (fuse_daemonize(opts.foreground) != 0) {
+	if (fuse_daemonize(opts->foreground) != 0) {
 		res = 5;
 		goto out3;
 	}
@@ -1917,7 +1960,7 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 			goto out3;
 		}
 
-		if (setenv("mountpoint", opts.mountpoint, 1)) {
+		if (setenv("mountpoint", opts->mountpoint, 1)) {
 			perror("chdir");
 			res = 5;
 			goto out3;
@@ -1936,12 +1979,12 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		goto out3;
 	}
 
-	if (opts.singlethread)
+	if (opts->singlethread)
 		res = fuse_loop(fuse);
 	else {
 		struct fuse_loop_config loop_config;
-		loop_config.clone_fd = opts.clone_fd;
-		loop_config.max_idle_threads = opts.max_idle_threads;
+		loop_config.clone_fd = opts->clone_fd;
+		loop_config.max_idle_threads = opts->max_idle_threads;
 		res = fuse_loop_mt(fuse, &loop_config);
 	}
 	if (res)
@@ -1953,50 +1996,36 @@ out3:
 out2:
 	fuse_destroy(fuse);
 out1:
-	free(opts.mountpoint);
+	free(opts->mountpoint);
 	fuse_opt_free_args(&args);
 	if (getenv("EXEC"))
 		if (pthread_join(t, NULL))
 			perror("pthread_join");
+	sqlite3_close(db);
 	return res;
 }
 
 int main(int argc, char *argv[])
 {
-	sqlite3 *db;
 	int ret;
 
 	if (__strncmp(basename(argv[0]), "mkfs.sqlitefs") == 0) {
-		ret = mkfs("fs.db");
+		ret = mkfs(argv[1]);
 		if (ret)
-			__exit_perror("fs.db", -ret);
+			__exit_perror(argv[1], -ret);
 
 		return EXIT_SUCCESS;
 	}
 
 	if (__strncmp(basename(argv[0]), "fsck.sqlitefs") == 0) {
-		ret = fsck("fs.db");
+		ret = fsck(argv[1]);
 		if (ret)
-			__exit_perror("fs.db", -ret);
+			__exit_perror(argv[1], -ret);
 
 		return EXIT_SUCCESS;
 	}
 
-	if (sqlite3_open_v2("fs.db", &db, SQLITE_OPEN_READWRITE, NULL)) {
-		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
-		sqlite3_close(db);
-		__exit_perror("fs.db", EIO);
-	}
-
-	ret = lost_found(db);
-	if (ret < 0) {
-		sqlite3_close(db);
-		__exit_perror("lost_found", -ret);
-	} else if (ret) {
-		fprintf(stderr, "%i orphans found!\n", ret);
-	}
-
-	ret = sqlitefs_main(argc, argv, &operations, sizeof(operations), db);
+	ret = sqlitefs_main(argc, argv, &operations, sizeof(operations), NULL);
 	/* hack: returns success if fuse_main() was interrupted. */
 	if (ret == 7)
 		ret = 0;

@@ -77,7 +77,7 @@ then
 
 	mkdir -p mountpoint/.lost+found
 else
-	sqlitefs -f mountpoint/ &
+	sqlitefs -f fs.db mountpoint/ &
 	while ! mountpoint --quiet mountpoint
 	do
 		sleep 0.1
