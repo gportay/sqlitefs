@@ -105,13 +105,6 @@ Options for iconv module:
 **-o to_code=CHARSET**::
 	new encoding of the file names (default: UTF-8)
 
-== ENVIRONMENT VARIABLES
-
-SQLiteFS Environment variables:
-
-**EXEC=COMMAND**::
-	run the COMMAND in a shell (requires -f or -d)
-
 == AUTHOR
 
 Written by Gaël PORTAY *gael.portay@gmail.com*

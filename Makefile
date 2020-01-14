@@ -53,14 +53,12 @@ umount:
 	fusermount -u mountpoint
 
 .PHONY: shell
-shell: export EXEC = $(SHELL)
 shell: sqlitefs | mountpoint fs.db
-	./sqlitefs -f fs.db mountpoint
+	./sqlitefs -f fs.db mountpoint -- $(SHELL)
 
 .PHONY: debug-shell
-debug-shell: export EXEC = $(SHELL)
 debug-shell: sqlitefs | mountpoint fs.db
-	./sqlitefs -d fs.db mountpoint
+	./sqlitefs -d fs.db mountpoint -- $(SHELL)
 
 .PHONY: docker-shell
 docker-shell: SHELL = /bin/bash

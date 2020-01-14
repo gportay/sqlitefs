@@ -23,6 +23,7 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
+#include <sys/wait.h>
 
 #include <libgen.h>
 #include <fuse.h>
@@ -1705,6 +1706,7 @@ static struct fuse_operations operations = {
 struct sqlitefs_cmdline_opts {
 	struct fuse_cmdline_opts base;
 	char *file;
+	const char *command;
 };
 
 #define FUSE_HELPER_OPT(t, p) \
@@ -1771,10 +1773,11 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 				return -1;
 			}
 			return fuse_opt_add_opt(&opts->mountpoint, mountpoint);
-		} else {
-			fuse_log(FUSE_LOG_ERR, "fuse: invalid argument `%s'\n", arg);
-			return -1;
+		} else if (!sqlitefs_opts->command) {
+			sqlitefs_opts->command = arg;
+			opts->foreground = 1;
 		}
+		return 0;
 
 	default:
 		/* Pass through unknown options */
@@ -1782,31 +1785,54 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 	}
 }
 
+struct thread_opts {
+	pthread_t main_thread;
+	char **argv;
+	int argc;
+};
+
+static int fork_execv(int argc, char **argv)
+{
+	int status;
+	pid_t pid;
+	(void)argc;
+
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		return -errno;
+	}
+
+	if (pid) {
+		if (waitpid(pid, &status, 0) == -1) {
+			perror("waitpid");
+			return -errno;
+		}
+
+		return status;
+	}
+
+	execv(argv[0], argv);
+	perror("execv");
+	_exit(127);
+}
+
 static void *start(void *arg)
 {
-	pthread_t main_thread = *(pthread_t *)arg;
+	struct thread_opts *opts = (struct thread_opts *)arg;
 	static int ret;
 
-	ret = system(getenv("EXEC"));
+	ret = fork_execv(opts->argc, opts->argv);
 	if (ret == -1)
-		perror("system");
+		perror("fork_execv");
 
-	if (pthread_kill(main_thread, SIGTERM))
+	if (pthread_kill(opts->main_thread, SIGTERM))
 		perror("ptrhead_kill");
 
 	if (WIFEXITED(ret))
 		ret = WEXITSTATUS(ret);
 
 	return &ret;
-}
-
-static void sqlitefs_cmdline_help()
-{
-	fprintf(stderr,
-		"\n"
-		"SQLiteFS Environment variables:\n"
-		"    EXEC=COMMAND           run the COMMAND in a shell (requires -f or -d)\n"
-		);
 }
 
 /* Under FreeBSD, there is no subtype option so this
@@ -1865,6 +1891,7 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	struct sqlitefs_cmdline_opts sqlitefs_opts;
 	pthread_t t, main_thread = pthread_self();
+	static struct thread_opts thread_opts;
 	struct fuse_cmdline_opts *opts;
 	struct fuse *fuse;
 	sqlite3 *db;
@@ -1883,12 +1910,11 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 
 	if (opts->show_help) {
 		if(args.argv[0][0] != '\0')
-			printf("usage: %s [options] <file> <mountpoint>\n\n",
+			printf("usage: %s [options] <file> <mountpoint> [--] [command] [args]\n\n",
 			       args.argv[0]);
 		printf("FUSE options:\n");
 		fuse_cmdline_help();
 		fuse_lib_help(&args);
-		sqlitefs_cmdline_help();
 		res = 0;
 		goto out1;
 	}
@@ -1926,14 +1952,6 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		goto out1;
 	}
 
-	if (getenv("EXEC")) {
-		if (!opts->foreground && !opts->debug) {
-			fuse_log(FUSE_LOG_ERR, "error: foreground or debug not specified\n");
-			res = 2;
-			goto out1;
-		}
-	}
-
 	fuse = fuse_new(&args, op, op_size, user_data);
 	if (fuse == NULL) {
 		res = 3;
@@ -1950,7 +1968,12 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		goto out3;
 	}
 
-	if (getenv("EXEC")) {
+	if (sqlitefs_opts.command) {
+		int argi;
+		for (argi = 0; argi < argc; argi++)
+			if (strcmp(argv[argi], sqlitefs_opts.command) == 0)
+				break;
+
 		/* hack: make the process get back to $PWD.
 		 * The function fuse_daemonize() chdir to / even in foreground.
 		 */
@@ -1966,7 +1989,10 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 			goto out3;
 		}
 
-		if (pthread_create(&t, NULL, start, &main_thread)) {
+		thread_opts.main_thread = main_thread;
+		thread_opts.argv = &argv[argi];
+		thread_opts.argc = argc - argi;
+		if (pthread_create(&t, NULL, start, &thread_opts)) {
 			perror("pthread_create");
 			res = 5;
 			goto out3;
@@ -1996,6 +2022,7 @@ out3:
 out2:
 	fuse_destroy(fuse);
 out1:
+	free(sqlitefs_opts.file);
 	free(opts->mountpoint);
 	fuse_opt_free_args(&args);
 	if (getenv("EXEC"))
