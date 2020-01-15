@@ -1989,6 +1989,12 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 			goto out3;
 		}
 
+		if (setenv("file", sqlitefs_opts.file, 1)) {
+			perror("setenv");
+			res = 5;
+			goto out3;
+		}
+
 		thread_opts.main_thread = main_thread;
 		thread_opts.argv = &argv[argi];
 		thread_opts.argc = argc - argi;
