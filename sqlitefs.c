@@ -1984,7 +1984,7 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		}
 
 		if (setenv("mountpoint", opts->mountpoint, 1)) {
-			perror("chdir");
+			perror("setenv");
 			res = 5;
 			goto out3;
 		}
