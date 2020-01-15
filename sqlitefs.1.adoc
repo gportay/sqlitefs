@@ -122,4 +122,4 @@ later version.
 
 == SEE ALSO
 
-fuser(1), fusermount(1)
+sqlite3(1), fusermount(1)
