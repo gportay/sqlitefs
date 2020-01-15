@@ -60,6 +60,10 @@ shell: sqlitefs | mountpoint fs.db
 debug-shell: sqlitefs | mountpoint fs.db
 	./sqlitefs -d fs.db mountpoint -- $(SHELL)
 
+.PHONY: valgrind-shell
+valgrind-shell: sqlitefs | mountpoint fs.db
+	valgrind ./sqlitefs -f fs.db mountpoint -- $(SHELL)
+
 .PHONY: docker-shell
 docker-shell: SHELL = /bin/bash
 docker-shell: sqlitefs.iid
