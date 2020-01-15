@@ -2034,7 +2034,6 @@ out1:
 	if (getenv("EXEC"))
 		if (pthread_join(t, NULL))
 			perror("pthread_join");
-	sqlite3_close(db);
 	return res;
 }
 
