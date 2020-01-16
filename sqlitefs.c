@@ -561,32 +561,31 @@ static int __chown(sqlite3 *db, const char *path, uid_t uid, gid_t gid)
 
 static int __utimens(sqlite3 *db, const char *path, const struct timespec tv[2])
 {
-	struct timespec atime = {
-		.tv_sec = tv[0].tv_sec,
-		.tv_nsec = tv[0].tv_nsec,
-	};
-	struct timespec mtime = {
-		.tv_sec = tv[1].tv_sec,
-		.tv_nsec = tv[1].tv_nsec,
-	};
+	struct timespec atime, mtime;
 	char sql[BUFSIZ];
 	char *e;
 
 	if (!db || !path)
 		return -EINVAL;
 
-	if (tv[0].tv_nsec == UTIME_NOW) {
+	if (!tv || tv[0].tv_nsec == UTIME_NOW) {
 		 if (clock_gettime(CLOCK_REALTIME, &atime)) {
 			 perror("clock_gettime");
 			 return -errno;
 		 }
+	} else {
+		atime.tv_sec = tv[0].tv_sec;
+		atime.tv_nsec = tv[0].tv_nsec;
 	}
 
-	if (tv[1].tv_nsec == UTIME_NOW) {
+	if (!tv || tv[1].tv_nsec == UTIME_NOW) {
 		 if (clock_gettime(CLOCK_REALTIME, &mtime)) {
 			 perror("clock_gettime");
 			 return -errno;
 		 }
+	} else {
+		mtime.tv_sec = tv[1].tv_sec;
+		mtime.tv_nsec = tv[1].tv_nsec;
 	}
 
 	if (tv[0].tv_nsec != UTIME_OMIT && tv[1].tv_nsec != UTIME_OMIT)
