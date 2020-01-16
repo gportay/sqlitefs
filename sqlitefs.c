@@ -589,14 +589,30 @@ static int __utimens(sqlite3 *db, const char *path, const struct timespec tv[2])
 		 }
 	}
 
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_atim_sec=%lu, "
-					"st_atim_nsec=%lu, "
-					"st_mtim_sec=%lu, "
-					"st_mtim_nsec=%lu "
-				   "WHERE path=\"%s\";",
-		 atime.tv_sec, atime.tv_nsec, mtime.tv_sec, mtime.tv_nsec,
-		 path);
+	if (tv[0].tv_nsec != UTIME_OMIT && tv[1].tv_nsec != UTIME_OMIT)
+		snprintf(sql, sizeof(sql), "UPDATE files SET "
+						"st_atim_sec=%lu, "
+						"st_atim_nsec=%lu, "
+						"st_mtim_sec=%lu, "
+						"st_mtim_nsec=%lu "
+					   "WHERE path=\"%s\";",
+			 atime.tv_sec, atime.tv_nsec,
+			 mtime.tv_sec, mtime.tv_nsec,
+			 path);
+	else if (tv[0].tv_nsec != UTIME_OMIT)
+		snprintf(sql, sizeof(sql), "UPDATE files SET "
+						"st_atim_sec=%lu, "
+						"st_atim_nsec=%lu, "
+					   "WHERE path=\"%s\";",
+			 atime.tv_sec, atime.tv_nsec, path);
+	else if (tv[1].tv_nsec != UTIME_OMIT)
+		snprintf(sql, sizeof(sql), "UPDATE files SET "
+						"st_mtim_sec=%lu, "
+						"st_mtim_nsec=%lu "
+					   "WHERE path=\"%s\";",
+			 mtime.tv_sec, mtime.tv_nsec, path);
+	else
+		return 0;
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
