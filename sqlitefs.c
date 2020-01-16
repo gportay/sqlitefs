@@ -561,11 +561,33 @@ static int __chown(sqlite3 *db, const char *path, uid_t uid, gid_t gid)
 
 static int __utimens(sqlite3 *db, const char *path, const struct timespec tv[2])
 {
+	struct timespec atime = {
+		.tv_sec = tv[0].tv_sec,
+		.tv_nsec = tv[0].tv_nsec,
+	};
+	struct timespec mtime = {
+		.tv_sec = tv[1].tv_sec,
+		.tv_nsec = tv[1].tv_nsec,
+	};
 	char sql[BUFSIZ];
 	char *e;
 
 	if (!db || !path)
 		return -EINVAL;
+
+	if (tv[0].tv_nsec == UTIME_NOW) {
+		 if (clock_gettime(CLOCK_REALTIME, &atime)) {
+			 perror("clock_gettime");
+			 return -errno;
+		 }
+	}
+
+	if (tv[1].tv_nsec == UTIME_NOW) {
+		 if (clock_gettime(CLOCK_REALTIME, &mtime)) {
+			 perror("clock_gettime");
+			 return -errno;
+		 }
+	}
 
 	snprintf(sql, sizeof(sql), "UPDATE files SET "
 					"st_atim_sec=%lu, "
@@ -573,7 +595,7 @@ static int __utimens(sqlite3 *db, const char *path, const struct timespec tv[2])
 					"st_mtim_sec=%lu, "
 					"st_mtim_nsec=%lu "
 				   "WHERE path=\"%s\";",
-		 tv[0].tv_sec, tv[0].tv_nsec, tv[1].tv_sec, tv[1].tv_nsec,
+		 atime.tv_sec, atime.tv_nsec, mtime.tv_sec, mtime.tv_nsec,
 		 path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
