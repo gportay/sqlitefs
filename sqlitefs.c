@@ -568,10 +568,10 @@ static int __utimens(sqlite3 *db, const char *path, const struct timespec tv[2])
 		return -EINVAL;
 
 	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"st_atim_sec=%lu, "
+					"st_atim_nsec=%lu, "
 					"st_mtim_sec=%lu, "
-					"st_mtim_nsec=%lu, "
-					"st_ctim_sec=%lu, "
-					"st_ctim_nsec=%lu "
+					"st_mtim_nsec=%lu "
 				   "WHERE path=\"%s\";",
 		 tv[0].tv_sec, tv[0].tv_nsec, tv[1].tv_sec, tv[1].tv_nsec,
 		 path);
