@@ -388,12 +388,18 @@ exit:
 static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
+	struct timespec now;
 	struct stat st;
 	char *e;
 	int ret;
 
 	if (!db || !linkname || !path)
 		return -EINVAL;
+
+	if (clock_gettime(CLOCK_REALTIME, &now)) {
+		perror("clock_gettime");
+		return -errno;
+	}
 
 	strncpy(parent, path, sizeof(parent));
 	dirname(parent);
@@ -416,9 +422,9 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
-	st.st_atime = time(NULL);
-	st.st_mtime = time(NULL);
-	st.st_ctime = time(NULL);
+	st.st_atim = now;
+	st.st_mtim = now;
+	st.st_ctim = now;
 
 	ret = add_file(db, path, NULL, 0, &st);
 	if (ret) {
@@ -815,10 +821,16 @@ exit:
 
 static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 {
+	struct timespec now;
 	struct stat st;
 
 	if (!db || !path)
 		return -EINVAL;
+
+	if (clock_gettime(CLOCK_REALTIME, &now)) {
+		perror("clock_gettime");
+		return -errno;
+	}
 
 	memset(&st, 0, sizeof(struct stat));
 	st.st_dev = rdev;
@@ -828,9 +840,10 @@ static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
-	st.st_atime = time(NULL);
-	st.st_mtime = time(NULL);
-	st.st_ctime = time(NULL);
+	st.st_atim = now;
+	st.st_mtim = now;
+	st.st_ctim = now;
+
 	if (add_file(db, path, NULL, 0, &st))
 		return -EIO;
 
@@ -929,10 +942,16 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 
 static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 {
+	struct timespec now;
 	struct stat st;
 
 	if (!db || !path)
 		return -EINVAL;
+
+	if (clock_gettime(CLOCK_REALTIME, &now)) {
+		perror("clock_gettime");
+		return -errno;
+	}
 
 	memset(&st, 0, sizeof(struct stat));
 	/* Ignored st.st_dev = 0; */
@@ -942,9 +961,9 @@ static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
-	st.st_atime = time(NULL);
-	st.st_mtime = time(NULL);
-	st.st_ctime = time(NULL);
+	st.st_atim = now;
+	st.st_mtim = now;
+	st.st_ctim = now;
 
 	return add_directory(db, path, &st);
 }
