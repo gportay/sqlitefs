@@ -50,7 +50,7 @@ mount: sqlitefs | mountpoint fs.db
 
 .PHONY: umount
 umount:
-	fusermount -u mountpoint
+	fusermount3 -u mountpoint
 
 .PHONY: shell
 shell: sqlitefs | mountpoint fs.db
