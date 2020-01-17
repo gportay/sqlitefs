@@ -2116,9 +2116,6 @@ int main(int argc, char *argv[])
 	}
 
 	ret = sqlitefs_main(argc, argv, &operations, sizeof(operations), NULL);
-	/* hack: returns success if fuse_main() was interrupted. */
-	if (ret == 7)
-		ret = 0;
 	if (ret) {
 		__fuse_main_perror("fuse_main", ret);
 		ret = EXIT_FAILURE;
