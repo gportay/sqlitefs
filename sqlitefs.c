@@ -2075,6 +2075,8 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		loop_config.max_idle_threads = opts->max_idle_threads;
 		res = fuse_loop_mt(fuse, &loop_config);
 	}
+	if (res == SIGTERM)
+		res = 0;
 	if (res)
 		res = 7;
 
