@@ -2122,6 +2122,7 @@ int main(int argc, char *argv[])
 	ret = sqlitefs_main(argc, argv, &operations, sizeof(operations), NULL);
 	if (WIFSIGNALED(ret)) {
 		fprintf(stderr, "%s\n", strsignal(WTERMSIG(ret)));
+		ret = WTERMSIG(ret)+128;
 	} else if (WIFEXITED(ret) && WEXITSTATUS(ret)) {
 		__fuse_main_perror("fuse_main", WEXITSTATUS(ret));
 		ret = EXIT_FAILURE;
