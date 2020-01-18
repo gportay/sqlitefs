@@ -1955,7 +1955,7 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 
 	opts = (struct fuse_cmdline_opts *)&sqlitefs_opts;
 	if (sqlitefs_parse_cmdline(&args, &sqlitefs_opts) != 0)
-		return 1;
+		return 1<<8;
 
 	if (opts->show_version) {
 		printf("FUSE library version %s\n", PACKAGE_VERSION);
@@ -1978,14 +1978,14 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	if (!opts->show_help &&
 	    !sqlitefs_opts.file) {
 		fuse_log(FUSE_LOG_ERR, "error: no file specified\n");
-		res = 2;
+		res = 2<<8;
 		goto out1;
 	}
 
 	if (sqlite3_open_v2(sqlitefs_opts.file, &db, SQLITE_OPEN_READWRITE,
 			    NULL)) {
 		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
-		res = 2;
+		res = 2<<8;
 		goto out1;
 	}
 
@@ -1994,7 +1994,7 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	res = lost_found(db);
 	if (res < 0) {
 		__perror("lost_found", res);
-		res = 2;
+		res = 2<<8;
 		goto out1;
 	} else if (res) {
 		fprintf(stderr, "%i orphans found!\n", res);
@@ -2004,23 +2004,23 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	if (!opts->show_help &&
 	    !opts->mountpoint) {
 		fuse_log(FUSE_LOG_ERR, "error: no mountpoint specified\n");
-		res = 2;
+		res = 2<<8;
 		goto out1;
 	}
 
 	fuse = fuse_new(&args, op, op_size, user_data);
 	if (fuse == NULL) {
-		res = 3;
+		res = 3<<8;
 		goto out1;
 	}
 
 	if (fuse_mount(fuse,opts->mountpoint) != 0) {
-		res = 4;
+		res = 4<<8;
 		goto out2;
 	}
 
 	if (fuse_daemonize(opts->foreground) != 0) {
-		res = 5;
+		res = 5<<8;
 		goto out3;
 	}
 
@@ -2035,19 +2035,19 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		 */
 		if (chdir(getenv("PWD"))) {
 			perror("chdir");
-			res = 5;
+			res = 5<<8;
 			goto out3;
 		}
 
 		if (setenv("mountpoint", opts->mountpoint, 1)) {
 			perror("setenv");
-			res = 5;
+			res = 5<<8;
 			goto out3;
 		}
 
 		if (setenv("file", sqlitefs_opts.file, 1)) {
 			perror("setenv");
-			res = 5;
+			res = 5<<8;
 			goto out3;
 		}
 
@@ -2056,14 +2056,14 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 		thread_opts.argc = argc - argi;
 		if (pthread_create(&t, NULL, start, &thread_opts)) {
 			perror("pthread_create");
-			res = 5;
+			res = 5<<8;
 			goto out3;
 		}
 	}
 
 	struct fuse_session *se = fuse_get_session(fuse);
 	if (fuse_set_signal_handlers(se) != 0) {
-		res = 6;
+		res = 6<<8;
 		goto out3;
 	}
 
@@ -2077,8 +2077,8 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	}
 	if (res == SIGTERM)
 		res = 0;
-	if (res)
-		res = 7;
+	if (res < 0)
+		res = 7<<8;
 
 	fuse_remove_signal_handlers(se);
 out3:
@@ -2116,8 +2116,8 @@ int main(int argc, char *argv[])
 	}
 
 	ret = sqlitefs_main(argc, argv, &operations, sizeof(operations), NULL);
-	if (ret) {
-		__fuse_main_perror("fuse_main", ret);
+	if (WIFEXITED(ret) && WEXITSTATUS(ret)) {
+		__fuse_main_perror("fuse_main", WEXITSTATUS(ret));
 		ret = EXIT_FAILURE;
 	}
 
