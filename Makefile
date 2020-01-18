@@ -45,8 +45,7 @@ no-mount-tests: fs.db
 
 .PHONY: mount
 mount: sqlitefs | mountpoint fs.db
-	@echo "Note: You can run \$$ ls -al mountpoint/"
-	./sqlitefs -f fs.db mountpoint
+	./sqlitefs fs.db mountpoint
 
 .PHONY: umount
 umount:
