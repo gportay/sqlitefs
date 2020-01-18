@@ -1508,17 +1508,7 @@ static int sqlitefs_readdir(const char *path, void *buffer,
  *
  * Called on filesystem exit.
  */
-static void sqlitefs_destroy(void *private_data)
-{
-	sqlite3 *db = (sqlite3 *)private_data;
-
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return;
-	}
-
-	sqlite3_close(db);
-}
+/* void (*destroy) (void *private_data); */
 
 /**
  * Check file access permissions
@@ -1746,7 +1736,7 @@ static struct fuse_operations operations = {
 	/* .releasedir */
 	/* .fsyncdir */
 	/* .init */
-	.destroy = sqlitefs_destroy,
+	/* .destroy */
 	/*.access */
 	/*.create */
 	/*.lock */
@@ -1953,8 +1943,8 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	pthread_t t, main_thread = pthread_self();
 	static struct thread_opts thread_opts;
 	struct fuse_cmdline_opts *opts;
+	sqlite3 *db = NULL;
 	struct fuse *fuse;
-	sqlite3 *db;
 	int res;
 
 	opts = (struct fuse_cmdline_opts *)&sqlitefs_opts;
@@ -2096,6 +2086,8 @@ out1:
 	if (sqlitefs_opts.command && thread_opts.argv)
 		if (pthread_join(t, NULL))
 			perror("pthread_join");
+	if (db)
+		sqlite3_close(db);
 	return res;
 }
 
