@@ -1072,7 +1072,9 @@ static int fsck(const char *path)
 	if (ret == -1)
 		__exit_perror("system", -ret);
 
-	if (WIFEXITED(ret))
+	if (WIFSIGNALED(ret))
+		fprintf(stderr, "%s\n", strsignal(WTERMSIG(ret)));
+	else if (WIFEXITED(ret))
 		return WEXITSTATUS(ret);
 
 	return ret;
@@ -1885,7 +1887,9 @@ static void *start(void *arg)
 	if (pthread_kill(opts->main_thread, SIGTERM))
 		perror("ptrhead_kill");
 
-	if (WIFEXITED(ret))
+	if (WIFSIGNALED(ret))
+		fprintf(stderr, "%s\n", strsignal(WTERMSIG(ret)));
+	else if (WIFEXITED(ret))
 		ret = WEXITSTATUS(ret);
 
 	return &ret;
@@ -2116,7 +2120,9 @@ int main(int argc, char *argv[])
 	}
 
 	ret = sqlitefs_main(argc, argv, &operations, sizeof(operations), NULL);
-	if (WIFEXITED(ret) && WEXITSTATUS(ret)) {
+	if (WIFSIGNALED(ret)) {
+		fprintf(stderr, "%s\n", strsignal(WTERMSIG(ret)));
+	} else if (WIFEXITED(ret) && WEXITSTATUS(ret)) {
 		__fuse_main_perror("fuse_main", WEXITSTATUS(ret));
 		ret = EXIT_FAILURE;
 	}
