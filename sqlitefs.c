@@ -2093,7 +2093,7 @@ out1:
 	free(sqlitefs_opts.file);
 	free(opts->mountpoint);
 	fuse_opt_free_args(&args);
-	if (getenv("EXEC"))
+	if (sqlitefs_opts.command && thread_opts.argv)
 		if (pthread_join(t, NULL))
 			perror("pthread_join");
 	return res;
