@@ -80,39 +80,11 @@ static int DEBUG = 0;
 	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
 } while (0)
 
-#define __fuse_main_perror(s, e) do { \
-	fprintf(stderr, "%s: %s\n", s, __fuse_main_strerror(e)); \
-} while (0)
-
 #define __data(s) s, sizeof(s) - 1
 
 #define __sqlite3_perror(s, db) do { \
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
-
-static const char *__fuse_main_strerror(int err)
-{
-	switch (err) {
-	case 0:
-		return "Successful";
-	case 1:
-		return "Invalid option arguments";
-	case 2:
-		return "No mount point specified";
-	case 3:
-		return "FUSE setup failed";
-	case 4:
-		return "Mounting failed";
-	case 5:
-		return "Failed to daemonize (detach from session)";
-	case 6:
-		return "Failed to set up signal handlers";
-	case 7: 
-		return "An error occured during the life of the file system";
-	default:
-		return "Error";
-	}
-}
 
 static const char *mode_r(mode_t mode, char *buf, size_t bufsize)
 {
@@ -1948,8 +1920,11 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	int res;
 
 	opts = (struct fuse_cmdline_opts *)&sqlitefs_opts;
-	if (sqlitefs_parse_cmdline(&args, &sqlitefs_opts) != 0)
+	if (sqlitefs_parse_cmdline(&args, &sqlitefs_opts) != 0) {
+		fprintf(stderr, "%s: %s\n", "sqlitefs_parse_cmdline",
+			"Invalid option arguments");
 		return 1<<8;
+	}
 
 	if (opts->show_version) {
 		printf("FUSE library version %s\n", PACKAGE_VERSION);
@@ -2004,16 +1979,20 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 
 	fuse = fuse_new(&args, op, op_size, user_data);
 	if (fuse == NULL) {
+		fprintf(stderr, "%s: %s\n", "fuse_new", "FUSE setup failed");
 		res = 3<<8;
 		goto out1;
 	}
 
 	if (fuse_mount(fuse,opts->mountpoint) != 0) {
+		fprintf(stderr, "%s: %s\n", "fuse_mount", "Mounting failed");
 		res = 4<<8;
 		goto out2;
 	}
 
 	if (fuse_daemonize(opts->foreground) != 0) {
+		fprintf(stderr, "%s: %s\n", "fuse_daemonize",
+			"Failed to daemonize (detach from session)");
 		res = 5<<8;
 		goto out3;
 	}
@@ -2057,6 +2036,8 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 
 	struct fuse_session *se = fuse_get_session(fuse);
 	if (fuse_set_signal_handlers(se) != 0) {
+		fprintf(stderr, "%s: %s\n", "fuse_set_signal_handlers",
+			"Failed to set up signal handlers");
 		res = 6<<8;
 		goto out3;
 	}
@@ -2071,8 +2052,12 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 	}
 	if (res == SIGTERM)
 		res = 0;
-	if (res < 0)
+	if (res < 0) {
+		fprintf(stderr, "fuse_loop%s: %s\n",
+			opts->singlethread ? "" : "mt",
+			"An error occured during the life of the file system");
 		res = 7<<8;
+	}
 
 	fuse_remove_signal_handlers(se);
 out3:
@@ -2116,7 +2101,6 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "%s\n", strsignal(WTERMSIG(ret)));
 		ret = WTERMSIG(ret)+128;
 	} else if (WIFEXITED(ret) && WEXITSTATUS(ret)) {
-		__fuse_main_perror("fuse_main", WEXITSTATUS(ret));
 		ret = EXIT_FAILURE;
 	}
 
