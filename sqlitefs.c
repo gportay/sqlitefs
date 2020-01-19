@@ -978,7 +978,7 @@ static int mkfs(const char *path)
 		return -EEXIST;
 
 	if (sqlite3_open(path, &db)) {
-		fprintf(stderr, "sqlite3_open: %s\n", sqlite3_errmsg(db));
+		__sqlite3_perror("sqlite3_open", db);
 		goto error;
 	}
 
@@ -1948,7 +1948,7 @@ int sqlitefs_main(int argc, char *argv[], const struct fuse_operations *op,
 
 	if (sqlite3_open_v2(sqlitefs_opts.file, &db, SQLITE_OPEN_READWRITE,
 			    NULL)) {
-		fprintf(stderr, "sqlite3_open_v2: %s\n", sqlite3_errmsg(db));
+		__sqlite3_perror("sqlite3_open_v2", db);
 		res = 2<<8;
 		goto out1;
 	}
