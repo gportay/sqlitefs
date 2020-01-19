@@ -2100,8 +2100,8 @@ int main(int argc, char *argv[])
 	if (WIFSIGNALED(ret)) {
 		fprintf(stderr, "%s\n", strsignal(WTERMSIG(ret)));
 		ret = WTERMSIG(ret)+128;
-	} else if (WIFEXITED(ret) && WEXITSTATUS(ret)) {
-		ret = EXIT_FAILURE;
+	} else if (WIFEXITED(ret)) {
+	       	ret = WEXITSTATUS(ret);
 	}
 
 	return ret;
