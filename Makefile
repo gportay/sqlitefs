@@ -53,7 +53,7 @@ umount:
 
 .PHONY: shell
 shell: sqlitefs | mountpoint fs.db
-	./sqlitefs -f fs.db mountpoint -- $(SHELL)
+	./sqlitefs fs.db mountpoint -- $(SHELL)
 
 .PHONY: debug-shell
 debug-shell: sqlitefs | mountpoint fs.db
@@ -61,7 +61,7 @@ debug-shell: sqlitefs | mountpoint fs.db
 
 .PHONY: valgrind-shell
 valgrind-shell: sqlitefs | mountpoint fs.db
-	valgrind ./sqlitefs -f fs.db mountpoint -- $(SHELL)
+	valgrind ./sqlitefs fs.db mountpoint -- $(SHELL)
 
 .PHONY: docker-shell
 docker-shell: SHELL = /bin/bash
