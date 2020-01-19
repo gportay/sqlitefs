@@ -1809,6 +1809,7 @@ struct thread_opts {
 	pthread_t main_thread;
 	char **argv;
 	int argc;
+	int status;
 };
 
 static int fork_execv(int argc, char **argv)
@@ -1840,21 +1841,15 @@ static int fork_execv(int argc, char **argv)
 static void *start(void *arg)
 {
 	struct thread_opts *opts = (struct thread_opts *)arg;
-	static int ret;
 
-	ret = fork_execv(opts->argc, opts->argv);
-	if (ret == -1)
+	opts->status = fork_execv(opts->argc, opts->argv);
+	if (opts->status == -1)
 		perror("fork_execv");
 
 	if (pthread_kill(opts->main_thread, SIGTERM))
 		perror("ptrhead_kill");
 
-	if (WIFSIGNALED(ret))
-		fprintf(stderr, "%s\n", strsignal(WTERMSIG(ret)));
-	else if (WIFEXITED(ret))
-		ret = WEXITSTATUS(ret);
-
-	return &ret;
+	return &opts->status;
 }
 
 /* Under FreeBSD, there is no subtype option so this
@@ -2068,9 +2063,14 @@ out1:
 	free(sqlitefs_opts.file);
 	free(opts->mountpoint);
 	fuse_opt_free_args(&args);
-	if (sqlitefs_opts.command && thread_opts.argv)
-		if (pthread_join(t, NULL))
+	if (sqlitefs_opts.command && thread_opts.argv) {
+		void *status;
+		if (pthread_join(t, &status))
 			perror("pthread_join");
+
+		if (res == 0)
+			res = *(int *)status;
+	}
 	if (db)
 		sqlite3_close(db);
 	return res;
