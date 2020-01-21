@@ -87,6 +87,7 @@ static int DEBUG = 0;
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
 
+#define FMTSIZ 32
 #define MODSIZ 11
 
 static const char *filetype_r(mode_t mode, char *buf, size_t bufsize)
@@ -196,7 +197,7 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 	char ctimbuf[BUFSIZ];
 	char gidbuf[BUFSIZ];
 	char uidbuf[BUFSIZ];
-	char fmtbuf[BUFSIZ];
+	char fmtbuf[FMTSIZ];
 	char modbuf[MODSIZ];
 
 	return fprintf(f, "  File: %s\n"
