@@ -90,6 +90,7 @@ static int DEBUG = 0;
 #define FMTSIZ 32
 #define MODSIZ 11
 #define USRSIZ 128
+#define GRPSIZ 64
 
 static const char *filetype_r(mode_t mode, char *buf, size_t bufsize)
 {
@@ -160,7 +161,7 @@ static const char *uid_r(const uid_t uid, char *buf, size_t bufsize)
 static const char *gid_r(const gid_t gid, char *buf, size_t bufsize)
 {
 	const char *name = "unknown";
-	char grpbuf[BUFSIZ];
+	char grpbuf[GRPSIZ];
 	struct group *grps;
 	struct group grp;
 
@@ -196,7 +197,7 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 	char atimbuf[BUFSIZ];
 	char mtimbuf[BUFSIZ];
 	char ctimbuf[BUFSIZ];
-	char gidbuf[BUFSIZ];
+	char gidbuf[GRPSIZ];
 	char uidbuf[USRSIZ];
 	char fmtbuf[FMTSIZ];
 	char modbuf[MODSIZ];
