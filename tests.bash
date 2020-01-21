@@ -259,7 +259,7 @@ if mkdir -p mountpoint/dir/subdir/orphan &&
 then
 	ok
 else
-	todo
+	ko
 fi
 echo
 

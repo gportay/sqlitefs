@@ -244,6 +244,7 @@ struct readdir_data {
 	const char *parent;
 	void *buffer;
 	fuse_fill_dir_t filler;
+	int count;
 };
 
 static int readdir_cb(void *data, int argc, char **argv, char **colname)
@@ -252,10 +253,55 @@ static int readdir_cb(void *data, int argc, char **argv, char **colname)
 	(void)argc;	
 	(void)colname;
 
-	if (strcmp(pdata->parent, argv[0]) != 0)
-		pdata->filler(pdata->buffer, basename(argv[0]), NULL, 0, 0);
+	if (strcmp(pdata->parent, argv[0]) != 0) {
+		if (pdata->buffer && pdata->filler)
+			pdata->filler(pdata->buffer, basename(argv[0]), NULL,
+				      0, 0);
+		pdata->count++;
+	}
 
 	return SQLITE_OK;
+}
+
+static int __readdir(sqlite3 *db, const char *path, void *buffer,
+		     fuse_fill_dir_t filler, off_t offset,
+		     struct fuse_file_info *fi,
+		     enum fuse_readdir_flags flags)
+{
+	struct readdir_data data = {
+		.parent = path,
+		.buffer = buffer,
+		.filler = filler,
+		.count = 0,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+	(void)offset;
+	(void)flags;
+	(void)fi;
+
+	if (!db || !path)
+		return -EINVAL;
+
+	if (buffer && filler) {
+		filler(buffer, ".", NULL, 0, 0);
+		filler(buffer, "..", NULL, 0, 0);
+	}
+	data.count += 2;
+
+	snprintf(sql, sizeof(sql), "SELECT path "
+				   "FROM files "
+				   "WHERE parent = \"%s\";",
+		 path);
+	ret = sqlite3_exec(db, sql, readdir_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return data.count;
 }
 
 struct orphan_data {
@@ -940,6 +986,17 @@ static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 	return add_directory(db, path, &st);
 }
 
+static int __rmdir(sqlite3 *db, const char *path)
+{
+	int ret = __readdir(db, path, NULL, NULL, 0, NULL, 0);
+	if (ret < 0)
+		return ret;
+	else if (ret > 2)
+		return -ENOTEMPTY;
+
+	return __unlink(db, path);
+}
+
 static int __mkdir_lost_found(sqlite3 *db)
 {
 	struct stat st;
@@ -1149,12 +1206,7 @@ static int sqlitefs_rmdir(const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
-	/* TODO: The rmdir() function shall remove a directory whose name is
-	 * given by path. The directory shall be removed only if it is an empty
-	 * directory.
-	 */
-
-	return __unlink(db, path);
+	return __rmdir(db, path);
 }
 
 /** Create a symbolic link */
@@ -1419,36 +1471,11 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 			    enum fuse_readdir_flags flags)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
-	struct readdir_data data = {
-		.parent = path,
-		.buffer = buffer,
-		.filler = filler,
-	};
-	char sql[BUFSIZ];
-	char *e;
 	int ret;
-	(void)offset;
-	(void)flags;
-	(void)fi;
 
-	if (!db) {
-		fprintf(stderr, "%s: Invalid context\n", __FUNCTION__);
-		return -EINVAL;
-	}
-
-	filler(buffer, ".", NULL, 0, 0);
-	filler(buffer, "..", NULL, 0, 0);
-
-	snprintf(sql, sizeof(sql), "SELECT path "
-				   "FROM files "
-				   "WHERE parent = \"%s\";",
-		 path);
-	ret = sqlite3_exec(db, sql, readdir_cb, &data, &e);
-	if (ret != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
+	ret = __readdir(db, path, buffer, filler, offset, fi, flags);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 }
