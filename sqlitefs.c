@@ -360,13 +360,13 @@ static int add_file(sqlite3 *db, const char *path, const void *data,
 	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
-		 "data, st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, "
+		 "data, st_dev, st_mode, st_nlink, st_uid, st_gid, "
 		 "st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
 		 "st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
 		 "st_ctim_nsec) "
-		 "VALUES(\"%s\", \"%s\", ?, %lu, %lu, %u, %lu, %u, %u, %lu, "
+		 "VALUES(\"%s\", \"%s\", ?, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, st->st_dev, st->st_ino, st->st_mode,
+		 path, parent, st->st_dev, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, data ? datasize : 0,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -472,12 +472,12 @@ static int add_directory(sqlite3 *db, const char *path, const struct stat *st)
 	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
-		 "st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
+		 "st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
 		 "st_size, st_blksize, st_blocks, st_atim_sec, st_atim_nsec, "
 		 "st_mtim_sec, st_mtim_nsec, st_ctim_sec, st_ctim_nsec) "
-		 "VALUES(\"%s\", \"%s\", %lu, %lu, %u, %lu, %u, %u, %lu, %lu, "
+		 "VALUES(\"%s\", \"%s\", %lu, %u, %lu, %u, %u, %lu, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, st->st_dev, st->st_ino, st->st_mode,
+		 path, parent, st->st_dev, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, st->st_size,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -507,7 +507,7 @@ static int __stat(sqlite3 *db, const char *path, struct stat *st)
 	snprintf(sql, sizeof(sql), "SELECT "
 					"path, "
 					"st_dev, "
-					"st_ino, "
+					"rowid, "
 					"st_mode, "
 					"st_nlink, "
 					"st_uid, "
@@ -1045,7 +1045,6 @@ static int mkfs(const char *path)
 				"parent TEXT NOT NULL, "
 				"data BLOB, "
 				"st_dev INT(8), "
-				"st_ino INT(8), "
 				"st_mode INT(4), "
 				"st_nlink INT(8), "
 				"st_uid INT(4), "
