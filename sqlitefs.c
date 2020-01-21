@@ -23,6 +23,7 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #include <libgen.h>
@@ -86,6 +87,8 @@ static int DEBUG = 0;
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
 
+#define MODSIZ 11
+
 static const char *filetype_r(mode_t mode, char *buf, size_t bufsize)
 {
 	if (S_ISREG(mode))
@@ -110,6 +113,31 @@ static const char *filetype_r(mode_t mode, char *buf, size_t bufsize)
 		return strncpy(buf, "socket", bufsize);
 
 	return strncpy(buf, "unknown", bufsize);
+}
+
+static const char *mode_r(mode_t mode, char *buf, size_t bufsize)
+{
+	char *s = buf;
+
+	if (bufsize < MODSIZ)
+		return NULL;
+
+	*(s++) = S_ISDIR(mode)? 'd' : S_ISLNK(mode) ? 'l' : '-';
+
+	*(s++) = mode & S_IRUSR ? 'r' : '-';
+	*(s++) = mode & S_IWUSR ? 'w' : '-';
+	*(s++) = mode & S_ISUID ? 'S' : mode & S_IXUSR ? 'x' : '-';
+
+	*(s++) = mode & S_IRGRP ? 'r' : '-';
+	*(s++) = mode & S_IWGRP ? 'w' : '-';
+	*(s++) = mode & S_ISGID ? 'S' : mode & S_IXGRP ? 'x' : '-';
+
+	*(s++) = mode & S_IROTH ? 'r' : '-';
+	*(s++) = mode & S_IWOTH ? 'w' : '-';
+	*(s++) = mode & S_ISVTX ? 'T' : mode & S_IXOTH ? 'x' : '-';
+
+	*s = 0;
+	return buf;
 }
 
 static const char *uid_r(const uid_t uid, char *buf, size_t bufsize)
@@ -169,18 +197,19 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 	char gidbuf[BUFSIZ];
 	char uidbuf[BUFSIZ];
 	char fmtbuf[BUFSIZ];
+	char modbuf[MODSIZ];
 
 	return fprintf(f, "  File: %s\n"
 			  "  Size: %li\tBlocks: %li\tIO Block: %li\t%s\n"
 			  "Device: %lx/%li\tInode: %lu\tLinks: %li\n"
-			  "Access: (%04o)\tUid: (%s)\tGid: (%s)\n"
+			  "Access: (%04o/%s)\tUid: (%s)\tGid: (%s)\n"
 			  "Access: %s\n"
 			  "Modify: %s\n"
 			  "Change: %s\n"
 			  " Birth: -\n",
 			  path, buf->st_size, buf->st_blocks, buf->st_blksize, filetype_r(buf->st_mode, fmtbuf, sizeof(fmtbuf)),
 			  buf->st_rdev, buf->st_rdev, buf->st_ino, buf->st_nlink,
-			  buf->st_mode, uid_r(buf->st_uid, uidbuf, sizeof(uidbuf)), gid_r(buf->st_gid, gidbuf, sizeof(gidbuf)),
+			  buf->st_mode, mode_r(buf->st_mode, modbuf, sizeof(modbuf)), uid_r(buf->st_uid, uidbuf, sizeof(uidbuf)), gid_r(buf->st_gid, gidbuf, sizeof(gidbuf)),
 			  timespec_r(&buf->st_atim, atimbuf, sizeof(atimbuf)),
 			  timespec_r(&buf->st_mtim, mtimbuf, sizeof(mtimbuf)),
 			  timespec_r(&buf->st_ctim, ctimbuf, sizeof(ctimbuf)));
