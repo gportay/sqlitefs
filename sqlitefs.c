@@ -87,6 +87,7 @@ static int DEBUG = 0;
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
 
+#define TIMSIZ 32
 #define FMTSIZ 32
 #define MODSIZ 11
 #define USRSIZ 128
@@ -194,9 +195,9 @@ static const char *timespec_r(const struct timespec *ts, char *buf,
 
 static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 {
-	char atimbuf[BUFSIZ];
-	char mtimbuf[BUFSIZ];
-	char ctimbuf[BUFSIZ];
+	char atimbuf[TIMSIZ];
+	char mtimbuf[TIMSIZ];
+	char ctimbuf[TIMSIZ];
 	char gidbuf[GRPSIZ];
 	char uidbuf[USRSIZ];
 	char fmtbuf[FMTSIZ];
