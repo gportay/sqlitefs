@@ -89,6 +89,7 @@ static int DEBUG = 0;
 
 #define FMTSIZ 32
 #define MODSIZ 11
+#define USRSIZ 128
 
 static const char *filetype_r(mode_t mode, char *buf, size_t bufsize)
 {
@@ -144,7 +145,7 @@ static const char *mode_r(mode_t mode, char *buf, size_t bufsize)
 static const char *uid_r(const uid_t uid, char *buf, size_t bufsize)
 {
 	const char *name = "unknown";
-	char pwdbuf[BUFSIZ];
+	char pwdbuf[USRSIZ];
 	struct passwd *pwds;
 	struct passwd pwd;
 
@@ -196,7 +197,7 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 	char mtimbuf[BUFSIZ];
 	char ctimbuf[BUFSIZ];
 	char gidbuf[BUFSIZ];
-	char uidbuf[BUFSIZ];
+	char uidbuf[USRSIZ];
 	char fmtbuf[FMTSIZ];
 	char modbuf[MODSIZ];
 
