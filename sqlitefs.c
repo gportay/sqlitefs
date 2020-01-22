@@ -209,7 +209,7 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 			  path,
 			  buf->st_size, buf->st_blocks, buf->st_blksize, filetype_r(buf->st_mode, fmtbuf, sizeof(fmtbuf)),
 			  buf->st_rdev, buf->st_rdev, buf->st_ino, buf->st_nlink,
-			  buf->st_mode, mode_r(buf->st_mode, modbuf, sizeof(modbuf)), uid_r(buf->st_uid, uidbuf, sizeof(uidbuf)), gid_r(buf->st_gid, gidbuf, sizeof(gidbuf)),
+			  buf->st_mode & ~S_IFMT, mode_r(buf->st_mode, modbuf, sizeof(modbuf)), uid_r(buf->st_uid, uidbuf, sizeof(uidbuf)), gid_r(buf->st_gid, gidbuf, sizeof(gidbuf)),
 			  timespec_r(&buf->st_atim, atimbuf, sizeof(atimbuf)),
 			  timespec_r(&buf->st_mtim, mtimbuf, sizeof(mtimbuf)),
 			  timespec_r(&buf->st_ctim, ctimbuf, sizeof(ctimbuf)),
