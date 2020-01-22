@@ -55,6 +55,10 @@ umount:
 shell: sqlitefs | mountpoint fs.db
 	./sqlitefs fs.db mountpoint -- $(SHELL)
 
+.PHONY: verbose-shell
+verbose-shell: sqlitefs | mountpoint fs.db
+	./sqlitefs -v fs.db mountpoint -- $(SHELL)
+
 .PHONY: debug-shell
 debug-shell: sqlitefs | mountpoint fs.db
 	./sqlitefs -d fs.db mountpoint -- $(SHELL)

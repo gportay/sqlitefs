@@ -37,7 +37,9 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 
 #include "hexdump.h"
 
+static int VERBOSE = 0;
 static int DEBUG = 0;
+#define verbose(fmt, ...) if (VERBOSE) fprintf(stderr, fmt, ##__VA_ARGS__)
 #define debug(fmt, ...) if (DEBUG) fprintf(stderr, fmt, ##__VA_ARGS__)
 #define debug2(fmt, ...) if (DEBUG >= 2) fprintf(stderr, fmt, ##__VA_ARGS__)
 #define hexdebug(addr, buf, size) if (DEBUG) fhexdump(stderr, addr, buf, size)
@@ -567,7 +569,7 @@ static int __stat(sqlite3 *db, const char *path, struct stat *st)
 	if (data.error)
 		return -data.error;
 
-	if (DEBUG >= 2)
+	if (VERBOSE)
 		fprintstat(stderr, path, st);
 
 	return 0;
@@ -1784,6 +1786,7 @@ static struct fuse_operations operations = {
 
 enum sqlitefs_opts {
 	SQLITEFS_OPT_KEY_DEBUG,
+	SQLITEFS_OPT_KEY_VERBOSE,
 };
 
 struct sqlitefs_cmdline_opts {
@@ -1806,6 +1809,8 @@ static const struct fuse_opt sqlitefs_opts[] = {
 	FUSE_HELPER_OPT("debug",	foreground),
 	FUSE_OPT_KEY("-d",		SQLITEFS_OPT_KEY_DEBUG),
 	FUSE_OPT_KEY("debug",		SQLITEFS_OPT_KEY_DEBUG),
+	FUSE_OPT_KEY("-v",		SQLITEFS_OPT_KEY_VERBOSE),
+	FUSE_OPT_KEY("verbose",		SQLITEFS_OPT_KEY_VERBOSE),
 	FUSE_HELPER_OPT("-f",		foreground),
 	FUSE_HELPER_OPT("-s",		singlethread),
 	FUSE_HELPER_OPT("fsname=",	nodefault_subtype),
@@ -1865,6 +1870,10 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 	case SQLITEFS_OPT_KEY_DEBUG:
 		DEBUG++;
 		return 1;
+
+	case SQLITEFS_OPT_KEY_VERBOSE:
+		VERBOSE++;
+		return 0;
 
 	default:
 		/* Pass through unknown options */
