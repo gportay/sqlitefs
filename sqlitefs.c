@@ -1782,6 +1782,10 @@ static struct fuse_operations operations = {
 	/* .copy_file_range */
 };
 
+enum sqlitefs_opts {
+	SQLITEFS_OPT_KEY_DEBUG,
+};
+
 struct sqlitefs_cmdline_opts {
 	struct fuse_cmdline_opts base;
 	char *file;
@@ -1800,8 +1804,8 @@ static const struct fuse_opt sqlitefs_opts[] = {
 	FUSE_HELPER_OPT("debug",	debug),
 	FUSE_HELPER_OPT("-d",		foreground),
 	FUSE_HELPER_OPT("debug",	foreground),
-	FUSE_OPT_KEY("-d",		FUSE_OPT_KEY_KEEP),
-	FUSE_OPT_KEY("debug",		FUSE_OPT_KEY_KEEP),
+	FUSE_OPT_KEY("-d",		SQLITEFS_OPT_KEY_DEBUG),
+	FUSE_OPT_KEY("debug",		SQLITEFS_OPT_KEY_DEBUG),
 	FUSE_HELPER_OPT("-f",		foreground),
 	FUSE_HELPER_OPT("-s",		singlethread),
 	FUSE_HELPER_OPT("fsname=",	nodefault_subtype),
@@ -1857,6 +1861,10 @@ static int sqlitefs_opt_proc(void *data, const char *arg, int key,
 			opts->foreground = 1;
 		}
 		return 0;
+
+	case SQLITEFS_OPT_KEY_DEBUG:
+		DEBUG++;
+		return 1;
 
 	default:
 		/* Pass through unknown options */
