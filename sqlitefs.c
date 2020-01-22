@@ -466,7 +466,7 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	/* Ignored st.st_dev = 0; */
 	/* Ignored st.st_ino = 0; */
 	st.st_mode = S_IFLNK | ACCESSPERMS;
-	st.st_nlink = 2;
+	st.st_nlink = 1;
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
