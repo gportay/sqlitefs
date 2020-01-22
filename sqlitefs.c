@@ -80,6 +80,10 @@ static int DEBUG = 0;
 #define USRSIZ 128
 #define GRPSIZ 64
 
+#ifndef ACCESSPERMS
+# define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO)
+#endif
+
 static const char *filetype_r(mode_t mode, char *buf, size_t bufsize)
 {
 	if (S_ISREG(mode))
@@ -461,7 +465,7 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	memset(&st, 0, sizeof(struct stat));
 	/* Ignored st.st_dev = 0; */
 	/* Ignored st.st_ino = 0; */
-	st.st_mode = S_IFLNK;
+	st.st_mode = S_IFLNK | ACCESSPERMS;
 	st.st_nlink = 2;
 	st.st_uid = getuid();
 	st.st_gid = getgid();

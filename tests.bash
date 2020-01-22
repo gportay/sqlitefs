@@ -293,6 +293,16 @@ else
 fi
 echo
 
+run "List symbolic link"
+if ls -l mountpoint/symlink | tee /dev/stderr |
+   grep -q '^lrwxrwxrwx .* mountpoint/symlink -> .Trash$'
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "Remove symlink"
 if rm mountpoint/symlink &&
    ! test -L mountpoint/symlink
