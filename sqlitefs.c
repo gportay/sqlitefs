@@ -59,21 +59,6 @@ static int DEBUG = 0;
 
 #define __strncmp(s1, s2) strncmp(s1, s2, sizeof(s2) - 1)
 
-#define __return(s) do {\
-	perror(s); \
-	return -errno; \
-} while (0)
-
-#define __exit(s) do {\
-	perror(s); \
-	exit(EXIT_FAILURE); \
-} while (0)
-
-#define __return_perror(s, e) do { \
-	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
-	return -e; \
-} while (0)
-
 #define __exit_perror(s, e) do {\
 	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
 	exit(EXIT_FAILURE); \
