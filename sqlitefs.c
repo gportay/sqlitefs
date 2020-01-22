@@ -89,7 +89,7 @@ static int DEBUG = 0;
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
 
-#define TIMSIZ 32
+#define TIMSIZ 48
 #define FMTSIZ 32
 #define MODSIZ 11
 #define USRSIZ 128
@@ -190,7 +190,11 @@ static const char *timespec_r(const struct timespec *ts, char *buf,
 		return NULL;
 
 	if (n < bufsize)
-		snprintf(buf+n, bufsize-n, ".%09li", ts->tv_nsec);
+		n += snprintf(buf+n, bufsize-n, ".%09li", ts->tv_nsec);
+
+	n = strftime(buf+n, bufsize-n, " %z", &tm);
+	if (!n)
+		return NULL;
 
 	return buf;
 }
