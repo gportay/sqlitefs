@@ -284,8 +284,8 @@ fi
 echo
 
 run "Read symbolic link"
-if readlink mountpoint/symlink | tee /dev/stderr | md5sum - |
-   grep -q '^52b6c9badcfa44b405995fb8e5f9fa31  -$'
+if readlink mountpoint/symlink | tee /dev/stderr |
+   grep -q '^.Trash$'
 then
 	ok
 else
