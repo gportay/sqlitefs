@@ -397,7 +397,7 @@ static int add_file(sqlite3 *db, const char *path, const void *data,
 		 "VALUES(\"%s\", \"%s\", ?, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
 		 path, parent, st->st_dev, st->st_mode,
-		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, data ? datasize : 0,
+		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, datasize,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
 		 st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
@@ -474,7 +474,7 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	ret = add_file(db, path, NULL, 0, &st);
+	ret = add_file(db, path, NULL, strlen(linkname), &st);
 	if (ret) {
 		snprintf(sql, sizeof(sql), "DELETE FROM symlinks "
 					   "WHERE path=\"%s\";",

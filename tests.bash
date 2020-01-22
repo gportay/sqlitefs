@@ -295,7 +295,7 @@ echo
 
 run "List symbolic link"
 if ls -l mountpoint/symlink | tee /dev/stderr |
-   grep -q '^lrwxrwxrwx 1 .* mountpoint/symlink -> .Trash$'
+   grep -q "^lrwxrwxrwx 1 $USER $USER 6 .* mountpoint/symlink -> .Trash\$"
 then
 	ok
 else
