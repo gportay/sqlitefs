@@ -200,7 +200,7 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 
 	return fprintf(f, "  File: %s\n"
 			  "  Size: %li\tBlocks: %li\tIO Block: %li\t%s\n"
-			  "Device: %lx/%li\tInode: %lu\tLinks: %li\n"
+			  "Device: %lxh/%lid\tInode: %lu\tLinks: %li\n"
 			  "Access: (%04o/%s)\tUid: (%s)\tGid: (%s)\n"
 			  "Access: %s\n"
 			  "Modify: %s\n"
