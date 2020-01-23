@@ -1806,6 +1806,8 @@ static const struct fuse_opt sqlitefs_opts[] = {
 	FUSE_OPT_KEY("debug",		SQLITEFS_OPT_KEY_DEBUG),
 	FUSE_OPT_KEY("-v",		SQLITEFS_OPT_KEY_VERBOSE),
 	FUSE_OPT_KEY("verbose",		SQLITEFS_OPT_KEY_VERBOSE),
+	FUSE_HELPER_OPT("-v",		foreground),
+	FUSE_HELPER_OPT("verbose",	foreground),
 	FUSE_HELPER_OPT("-f",		foreground),
 	FUSE_HELPER_OPT("-s",		singlethread),
 	FUSE_HELPER_OPT("fsname=",	nodefault_subtype),
