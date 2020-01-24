@@ -71,7 +71,7 @@ then
 	echo "       $ fusermount -u mountpoint/"
 	exit 1
 fi >&2
-trap result 0
+trap result 0 SIGINT
 if [[ ! -d mountpoint/ ]]
 then
 	mkdir -p mountpoint/
