@@ -23,6 +23,11 @@ sqlitefs:
 fs.db: | mkfs.sqlitefs
 	./mkfs.sqlitefs $@
 
+.SILENT: failed.db
+failed.db:
+	echo -e "\e[1mNote:\e[0m The filesystem database \`failed.db' is copied is the tests has failed!" >&2
+	false
+
 mountpoint:
 	mkdir -p $@
 
@@ -35,6 +40,8 @@ tests: sqlitefs fs.db
 	if ! bash tests.bash; then \
 		mv fs.db failed.db; \
 		echo -e "\e[1mNote:\e[0m The copy of the filesystem database is available at \`failed.db'." >&2; \
+		echo    "      Run the command below to investigate:"; \
+		echo    "      \$$ ./sqlitefs -v failed.db mountpoint -- /bin/sh"; \
 		exit 1; \
 	fi
 
@@ -54,6 +61,10 @@ umount:
 .PHONY: shell
 shell: sqlitefs | mountpoint fs.db
 	./sqlitefs fs.db mountpoint -- $(SHELL)
+
+.PHONY: shell
+failed-shell: sqlitefs | mountpoint failed.db
+	./sqlitefs -v failed.db mountpoint -- $(SHELL)
 
 .PHONY: verbose-shell
 verbose-shell: sqlitefs | mountpoint fs.db
