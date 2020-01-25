@@ -1885,7 +1885,7 @@ struct thread_opts {
 	int status;
 };
 
-static int fork_execv(int argc, char **argv)
+static int fork_execvp(int argc, char **argv)
 {
 	int status;
 	pid_t pid;
@@ -1906,8 +1906,8 @@ static int fork_execv(int argc, char **argv)
 		return status;
 	}
 
-	execv(argv[0], argv);
-	perror("execv");
+	execvp(argv[0], argv);
+	perror("execvp");
 	_exit(127);
 }
 
@@ -1915,9 +1915,9 @@ static void *start(void *arg)
 {
 	struct thread_opts *opts = (struct thread_opts *)arg;
 
-	opts->status = fork_execv(opts->argc, opts->argv);
+	opts->status = fork_execvp(opts->argc, opts->argv);
 	if (opts->status == -1)
-		perror("fork_execv");
+		perror("fork_execvp");
 
 	if (pthread_kill(opts->main_thread, SIGTERM))
 		perror("ptrhead_kill");
