@@ -89,6 +89,10 @@ docker-shell: sqlitefs.iid
 	           --entrypoint $$SHELL \
 		   sqlitefs
 
+.PHONY: hotspot
+hotspot: perf.data
+	hotspot
+
 .PHONY: perf
 perf: perf.data
 	perf report
