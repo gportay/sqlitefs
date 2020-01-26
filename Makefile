@@ -89,9 +89,16 @@ docker-shell: sqlitefs.iid
 	           --entrypoint $$SHELL \
 		   sqlitefs
 
+.PHONY: perf
+perf: perf.data
+	perf report
+
+perf.data: sqlitefs fs.db | mountpoint
+	perf record --call-graph dwarf ./sqlitefs fs.db mountpoint -- rsync -av .git mountpoint/.
+
 .PHONY: clean
 clean:
-	rm -f sqlitefs mkfs.sqlitefs fs.db failed.db
+	rm -f sqlitefs mkfs.sqlitefs fs.db failed.db perf.data
 
 %.: SHELL = /bin/bash
 %.iid: Dockerfile
