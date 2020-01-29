@@ -1,7 +1,7 @@
 FROM archlinux/base:latest
 
 RUN pacman --noconfirm -Syu base-devel
-RUN pacman --noconfirm -Syu git meson rsync strace valgrind
+RUN pacman --noconfirm -Syu git meson qt5-wayland rsync strace valgrind
 
 ARG user
 ARG uid
@@ -36,4 +36,4 @@ RUN git clone https://aur.archlinux.org/pacaur-git.git $home/src/pacaur-git
 WORKDIR $home/src/pacaur-git
 RUN makepkg --skippgpcheck --syncdeps --install --noconfirm
 
-RUN pacaur --noconfirm -S perf
+RUN pacaur --noconfirm -S perf hotspot
