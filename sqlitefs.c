@@ -906,7 +906,7 @@ static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
 	if (!db || !oldpath || !newpath)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
+	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE files SET "
 					"path=\"%s\" "
 				   "WHERE path=\"%s\";",
 		 newpath, oldpath);

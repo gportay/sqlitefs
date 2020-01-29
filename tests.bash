@@ -197,6 +197,19 @@ else
 fi
 echo
 
+run "Rename file to existing file (from top-level directory)"
+if cp README.md mountpoint/README.md.new &&
+   test -e mountpoint/README.md.new &&
+   mv mountpoint/README.md.new mountpoint/README.md &&
+   ! test -e mountpoint/README.md.new &&
+   test -e mountpoint/README.md
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "Remove file (from top-level directory)"
 if rm mountpoint/README.md &&
    ! test -e mountpoint/README.md
