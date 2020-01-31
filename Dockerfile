@@ -18,6 +18,11 @@ WORKDIR $home
 RUN echo "source_safe /etc/makepkg.conf" >.makepkg.conf
 RUN echo "OPTIONS+=(debug !strip)" >>.makepkg.conf
 
+RUN mkdir -p $home/src/libc
+WORKDIR $home/src/libc
+RUN curl https://git.archlinux.org/svntogit/packages.git/plain/glibc/repos/core-x86_64/{PKGBUILD,bz20338.patch,file-truncated-while-reading-soname-after-patchelf.patch,glibc.install,lib32-glibc.conf,locale-gen,locale.gen.txt,sdt-config.h,sdt.h} -O -O -O -O -O -O -O -O -O -O
+RUN makepkg --skippgpcheck --syncdeps --install --noconfirm
+
 RUN mkdir -p $home/src/fuse
 WORKDIR $home/src/fuse
 RUN curl https://git.archlinux.org/svntogit/packages.git/plain/fuse3/repos/extra-x86_64/PKGBUILD -O
