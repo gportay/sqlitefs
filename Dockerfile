@@ -1,7 +1,7 @@
 FROM archlinux/base:latest
 
 RUN pacman --noconfirm -Syu base-devel
-RUN pacman --noconfirm -Syu git meson qt5-wayland rsync strace valgrind
+RUN pacman --noconfirm -Syu git meson noto-fonts qt5-wayland rsync strace valgrind
 
 ARG user
 ARG uid
