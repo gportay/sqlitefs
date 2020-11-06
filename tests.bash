@@ -169,6 +169,35 @@ else
 fi
 echo
 
+run "Remove extended attribute"
+if setfattr -x sqlitefs.foo mountpoint/tmp.sh
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Get removed extended attribute"
+if ! getfattr -n sqlitesfs.foo mountpoint/tmp.sh | tee /dev/stderr | md5sum | tee /dev/stderr |
+   grep -q '^d41d8cd98f00b204e9800998ecf8427e  -$'
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Dump extended attributes"
+if getfattr -d -m - mountpoint/tmp.sh | tee /dev/stderr |
+   grep -q "# file: mountpoint/tmp.sh"
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "Change ownership"
 if fakeroot -- /bin/sh -c '
    chown root:root mountpoint/tmp.sh  &&

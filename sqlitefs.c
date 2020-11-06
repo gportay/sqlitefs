@@ -1232,6 +1232,28 @@ static int __listxattr(sqlite3 *db, const char *path, char *list, size_t size)
 	return data.len;
 }
 
+static int __removexattr(sqlite3 *db, const char *path, const char *name)
+{
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "DELETE FROM xattrs "
+				   "WHERE path=\"%s\" AND name=\"%s\";",
+				   path, name);
+	ret = sqlite3_exec(db, sql, NULL, NULL, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -ENOTSUP;
+	}
+
+	return 0;
+}
+
 static int mkfs(const char *path)
 {
 	char sql[BUFSIZ];
@@ -1680,7 +1702,12 @@ static int sqlitefs_listxattr(const char *path, char *list, size_t size)
 }
 
 /** Remove extended attributes */
-/* int (*removexattr) (const char *, const char *); */
+static int sqlitefs_removexattr(const char *path, const char *name)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	return __removexattr(db, path, name);
+}
 
 /** Open directory
  *
@@ -1972,7 +1999,7 @@ static struct fuse_operations operations = {
 	.setxattr = sqlitefs_setxattr,
 	.getxattr = sqlitefs_getxattr,
 	.listxattr = sqlitefs_listxattr,
-	/* .removexattr */
+	.removexattr = sqlitefs_removexattr,
 	/* .opendir */
 	.readdir = sqlitefs_readdir,
 	/* .releasedir */
