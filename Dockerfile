@@ -12,25 +12,29 @@ RUN groupadd --non-unique --gid $groups $user
 RUN useradd  --non-unique --gid $groups --uid $uid --create-home --home-dir $home --shell $SHELL $user
 RUN echo "%$user ALL=(ALL) NOPASSWD: /usr/bin/pacman" >/etc/sudoers.d/$user
 
+RUN pacman --noconfirm -Syu asp
+
 ENV EDITOR cat
 USER $user
 WORKDIR $home
 RUN echo "source_safe /etc/makepkg.conf" >.makepkg.conf
 RUN echo "OPTIONS+=(debug !strip)" >>.makepkg.conf
 
-RUN mkdir -p $home/src/libc
-WORKDIR $home/src/libc
-RUN curl https://git.archlinux.org/svntogit/packages.git/plain/glibc/repos/core-x86_64/{PKGBUILD,bz20338.patch,file-truncated-while-reading-soname-after-patchelf.patch,glibc.install,lib32-glibc.conf,locale-gen,locale.gen.txt,sdt-config.h,sdt.h} -O -O -O -O -O -O -O -O -O -O
+RUN mkdir -p $home/src/
+
+WORKDIR $home/src/
+RUN asp checkout glibc
+WORKDIR $home/src/glibc/repos/core-x86_64/
 RUN makepkg --skippgpcheck --syncdeps --install --noconfirm
 
-RUN mkdir -p $home/src/fuse
-WORKDIR $home/src/fuse
-RUN curl https://git.archlinux.org/svntogit/packages.git/plain/fuse3/repos/extra-x86_64/PKGBUILD -O
+WORKDIR $home/src/
+RUN asp checkout fuse3
+WORKDIR $home/src/fuse3/repos/extra-x86_64/
 RUN makepkg --skippgpcheck --syncdeps --install --noconfirm
 
-RUN mkdir -p $home/src/sqlite
-WORKDIR $home/src/sqlite
-RUN curl https://git.archlinux.org/svntogit/packages.git/plain/sqlite/repos/core-x86_64/{PKGBUILD,license.txt} -O -O
+WORKDIR $home/src/
+RUN asp checkout sqlite
+WORKDIR $home/src/sqlite/repos/core-x86_64/
 RUN makepkg --skippgpcheck --syncdeps --install --noconfirm
 
 RUN git clone https://aur.archlinux.org/auracle-git.git $home/src/auracle-git
