@@ -140,6 +140,35 @@ else
 fi
 echo
 
+run "Set extended attribute"
+if setfattr -n sqlitesfs.foo -v 1 mountpoint/tmp.sh
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Get extended attribute"
+if getfattr -n sqlitesfs.foo mountpoint/tmp.sh | tee /dev/stderr |
+   grep -q "# file: mountpoint/tmp.sh"
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Dump extended attributes"
+if getfattr -d -m - mountpoint/tmp.sh | tee /dev/stderr |
+   grep -q "# file: mountpoint/tmp.sh"
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "Change ownership"
 if fakeroot -- /bin/sh -c '
    chown root:root mountpoint/tmp.sh  &&

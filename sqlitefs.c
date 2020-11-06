@@ -25,6 +25,7 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <grp.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 
 #include <libgen.h>
 #include <fuse.h>
@@ -1124,6 +1125,44 @@ static int __mkdir_lost_found(sqlite3 *db)
 }
 
 static int __getxattr(sqlite3 *db, const char *path, const char *name,
+		      char *value, size_t size);
+static int __setxattr(sqlite3 *db, const char *path, const char *name,
+		      const char *value, size_t size, int flags)
+{
+	char sql[BUFSIZ];
+	char *e;
+	(void)size;
+
+	if (!db)
+		return -EINVAL;
+
+	if (flags) {
+		int exists = __getxattr(db, path, name, NULL, 0) > 0;
+		if (exists < 0)
+			return exists;
+
+		if (flags == XATTR_CREATE && exists)
+			return -EEXIST;	
+		else if (flags == XATTR_REPLACE && !exists)
+		       return -ENODATA;	
+	}
+
+	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO xattrs(path, name, value)"
+		                   "VALUES(\"%s\", \"%s\", \"%s\");",
+	        	           path, name, value);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -ENOTSUP;
+	}
+
+	if (VERBOSE)
+		fprintf(stderr, "%s", value);
+
+	return 0;
+}
+
+static int __getxattr(sqlite3 *db, const char *path, const char *name,
 		      char *value, size_t size)
 {
 	struct getxattr_data data = {
@@ -1614,7 +1653,14 @@ static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
 /* int (*fsync) (const char *, int, struct fuse_file_info *); */
 
 /** Set extended attributes */
-/* int (*setxattr) (const char *, const char *, const char *, size_t, int); */
+static int sqlitefs_setxattr(const char *path, const char *name,
+			     const char *value, size_t size, int flags)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	return __setxattr(db, path, name, value, size, flags);
+}
+
 
 /** Get extended attributes */
 static int sqlitefs_getxattr(const char *path, const char *name, char *value,
@@ -1923,7 +1969,7 @@ static struct fuse_operations operations = {
 	/* .flush */
 	/* .release */
 	/* .fsync */
-	/* .setxattr */
+	.setxattr = sqlitefs_setxattr,
 	.getxattr = sqlitefs_getxattr,
 	.listxattr = sqlitefs_listxattr,
 	/* .removexattr */
