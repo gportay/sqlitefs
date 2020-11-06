@@ -278,6 +278,33 @@ static int getxattr_cb(void *data, int argc, char **argv, char **colname)
 	return SQLITE_OK;
 }
 
+struct listxattr_data {
+	int error;
+	char *list;
+	size_t size;
+	size_t len;
+};
+
+static int listxattr_cb(void *data, int argc, char **argv, char **colname)
+{
+	struct listxattr_data *pdata = (struct listxattr_data *)data;
+	size_t len;
+	(void)argc;
+	(void)colname;
+
+	len = strlen(argv[0]) + 1;
+	if (pdata->list) {
+		strncpy(pdata->list + pdata->len, argv[0], pdata->size - pdata->len);
+		if (pdata->size < pdata->len + len) {
+			pdata->error = ERANGE;
+			len = pdata->size - pdata->len;
+		}
+	}
+	pdata->len += len;
+
+	return SQLITE_OK;
+}
+
 struct readlink_data {
 	int error;
 	char *buf;
@@ -1131,6 +1158,41 @@ static int __getxattr(sqlite3 *db, const char *path, const char *name,
 	return data.size;
 }
 
+static int __listxattr(sqlite3 *db, const char *path, char *list, size_t size)
+{
+	struct listxattr_data data = {
+		.error = 0, 
+		.list = list,
+		.size = size,
+		.len = 0,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "SELECT name "
+				   "FROM xattrs WHERE path = \"%s\";",
+		 path);
+	ret = sqlite3_exec(db, sql, listxattr_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -ENOTSUP;
+	}
+
+	if (data.error)
+		return -data.error;
+
+	if (VERBOSE)
+		if (list)
+			fhexdump(stderr, 0, list, data.len);
+
+	return data.len;
+}
+
 static int mkfs(const char *path)
 {
 	char sql[BUFSIZ];
@@ -1564,7 +1626,12 @@ static int sqlitefs_getxattr(const char *path, const char *name, char *value,
 }
 
 /** List extended attributes */
-/* int (*listxattr) (const char *, char *, size_t); */
+static int sqlitefs_listxattr(const char *path, char *list, size_t size)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	return __listxattr(db, path, list, size);
+}
 
 /** Remove extended attributes */
 /* int (*removexattr) (const char *, const char *); */
@@ -1858,6 +1925,7 @@ static struct fuse_operations operations = {
 	/* .fsync */
 	/* .setxattr */
 	.getxattr = sqlitefs_getxattr,
+	.listxattr = sqlitefs_listxattr,
 	/* .removexattr */
 	/* .opendir */
 	.readdir = sqlitefs_readdir,
