@@ -216,6 +216,11 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 			  "-");
 }
 
+static int fprintgetfattr(FILE *f, const char *path, const char *name, const char *value)
+{
+	return fprintf(f, "# file: %s\n%s=\"%s\"\n", path, name, value);
+}
+
 struct getattr_data {
 	int error;
 	struct stat *st;
@@ -246,6 +251,29 @@ static int getattr_cb(void *data, int argc, char **argv, char **colname)
 	pdata->st->st_mtim.tv_nsec = strtol(argv[i++], NULL, 0);
 	pdata->st->st_ctim.tv_sec = strtol(argv[i++], NULL, 0);
 	pdata->st->st_ctim.tv_nsec = strtol(argv[i++], NULL, 0);
+
+	return SQLITE_OK;
+}
+
+struct getxattr_data {
+	int error;
+	char *value;
+	size_t size;
+	size_t len;
+};
+
+static int getxattr_cb(void *data, int argc, char **argv, char **colname)
+{
+	struct getxattr_data *pdata = (struct getxattr_data *)data;
+	size_t len;
+	(void)argc;
+	(void)colname;
+
+	len = strlen(argv[0]);
+	pdata->error = pdata->size && len >= pdata->size ? ERANGE: 0;
+	if (pdata->value)
+		strncpy(pdata->value, argv[0], pdata->size);
+	pdata->size = len;
 
 	return SQLITE_OK;
 }
@@ -916,6 +944,16 @@ static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
 		return -EIO;
 	}
 
+	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE xattrs SET "
+					"path=\"%s\" "
+				   "WHERE path=\"%s\";",
+		 newpath, oldpath);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
 	return 0;
 }
 
@@ -937,6 +975,15 @@ static int __unlink(sqlite3 *db, const char *path)
 	}
 
 	snprintf(sql, sizeof(sql), "DELETE FROM symlinks "
+				   "WHERE path=\"%s\";",
+		 path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	snprintf(sql, sizeof(sql), "DELETE FROM xattrs "
 				   "WHERE path=\"%s\";",
 		 path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
@@ -1049,6 +1096,41 @@ static int __mkdir_lost_found(sqlite3 *db)
 	return 0;
 }
 
+static int __getxattr(sqlite3 *db, const char *path, const char *name,
+		      char *value, size_t size)
+{
+	struct getxattr_data data = {
+		.error = ENODATA,
+		.value = value,
+		.size = size,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "SELECT value "
+				   "FROM xattrs WHERE path = \"%s\" AND name = \"%s\";",
+		 path, name);
+	ret = sqlite3_exec(db, sql, getxattr_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -ENOTSUP;
+	}
+
+	if (data.error)
+		return -data.error;
+
+	if (VERBOSE)
+		if (value && size)
+			fprintgetfattr(stderr, path, name, value);
+
+	return data.size;
+}
+
 static int mkfs(const char *path)
 {
 	char sql[BUFSIZ];
@@ -1100,6 +1182,18 @@ static int mkfs(const char *path)
 				"path TEXT NOT NULL PRIMARY KEY, "
 				"parent TEXT NOT NULL, "
 				"linkname TEXT NOT NULL);");
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto error;
+	}
+
+	snprintf(sql, sizeof(sql),
+		 "CREATE TABLE IF NOT EXISTS xattrs("
+				"path TEXT NOT NULL, "
+				"name TEXT NOT NULL, "
+				"value TEXT NOT NULL, "
+				"PRIMARY KEY (path, name));");
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1461,7 +1555,13 @@ static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
 /* int (*setxattr) (const char *, const char *, const char *, size_t, int); */
 
 /** Get extended attributes */
-/* int (*getxattr) (const char *, const char *, char *, size_t); */
+static int sqlitefs_getxattr(const char *path, const char *name, char *value,
+			     size_t size)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	return __getxattr(db, path, name, value, size);
+}
 
 /** List extended attributes */
 /* int (*listxattr) (const char *, char *, size_t); */
@@ -1757,7 +1857,7 @@ static struct fuse_operations operations = {
 	/* .release */
 	/* .fsync */
 	/* .setxattr */
-	/* .getxattr */
+	.getxattr = sqlitefs_getxattr,
 	/* .removexattr */
 	/* .opendir */
 	.readdir = sqlitefs_readdir,

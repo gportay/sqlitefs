@@ -120,6 +120,16 @@ else
 fi
 echo
 
+run "Get non existing extended attribute"
+if ! getfattr -n sqlitesfs.foo mountpoint/tmp.sh| tee /dev/stderr |
+     grep -v "# file: mountpoint/tmp.sh"
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "Change ownership"
 if fakeroot -- /bin/sh -c '
    chown root:root mountpoint/tmp.sh  &&
