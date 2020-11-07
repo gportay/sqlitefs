@@ -1071,7 +1071,7 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 	if (data.error)
 		return -data.error;
 
-	if (DEBUG)
+	if (VERBOSE)
 		fprintf(stderr, "%s\n", buf);
 
 	return 0;
