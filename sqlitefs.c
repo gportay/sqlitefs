@@ -1411,6 +1411,8 @@ static int sqlitefs_getattr(const char *path, struct stat *st,
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
 
+	verbose("%s(path: '%s')\n", __func__, path);
+
 	return __stat(db, path, st);
 }
 
@@ -1426,6 +1428,9 @@ static int sqlitefs_readlink(const char *path, char *buf, size_t len)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
+	verbose("%s(path: '%s', buf: %p, size: %li)\n", __func__, path, buf,
+		len);
+
 	return __readlink(db, path, buf, len);
 }
 
@@ -1438,6 +1443,9 @@ static int sqlitefs_readlink(const char *path, char *buf, size_t len)
 static int sqlitefs_mknod(const char *path, mode_t mode, dev_t rdev)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+
+	verbose("%s(path: '%s', mode: %i, rdev: %li)\n", __func__, path, mode,
+		rdev);
 
 	return __mknod(db, path, mode, rdev);
 }
@@ -1452,6 +1460,8 @@ static int sqlitefs_mkdir(const char *path, mode_t mode)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
+	verbose("%s(path: '%s', mode: %i)\n", __func__, path, mode);
+
 	return __mkdir(db, path, mode);
 }
 
@@ -1459,6 +1469,8 @@ static int sqlitefs_mkdir(const char *path, mode_t mode)
 static int sqlitefs_unlink(const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+
+	verbose("%s(path: '%s')\n", __func__, path);
 
 	return __unlink(db, path);
 }
@@ -1468,6 +1480,8 @@ static int sqlitefs_rmdir(const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
+	verbose("%s(path: '%s')\n", __func__, path);
+
 	return __rmdir(db, path);
 }
 
@@ -1475,6 +1489,8 @@ static int sqlitefs_rmdir(const char *path)
 static int sqlitefs_symlink(const char *linkname, const char *path)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+
+	verbose("%s(linkname: '%s', path: '%s')\n", __func__, linkname, path);
 
 	return __symlink(db, linkname, path);
 }
@@ -1494,6 +1510,9 @@ static int sqlitefs_rename(const char *oldpath, const char *newpath,
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)flags;
 
+	verbose("%s(oldpath: '%s', newpath: '%s', flags: %u)\n", __func__,
+		oldpath, newpath, flags);
+
 	return __rename(db, oldpath, newpath);
 }
 
@@ -1510,6 +1529,8 @@ static int sqlitefs_chmod(const char *path, mode_t mode,
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
+
+	verbose("%s(path: '%s', mode: %i)\n", __func__, path, mode);
 
 	return __chmod(db, path, mode);
 }
@@ -1528,6 +1549,9 @@ static int sqlitefs_chown(const char *path, uid_t uid, gid_t gid,
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
 
+	verbose("%s(path: '%s', uid: %i, gid: %i)\n", __func__, path, uid,
+		gid);
+
 	return __chown(db, path, uid, gid);
 }
 
@@ -1544,6 +1568,8 @@ static int sqlitefs_truncate(const char *path, off_t size,
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
+
+	verbose("%s(path: '%s', size: %li)\n", __func__, path, size);
 
 	return __truncate(db, path, size);
 }
@@ -1612,6 +1638,9 @@ static int sqlitefs_read(const char *path, char *buf, size_t bufsize,
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
 
+	verbose("%s(path: '%s', buf: %p, bufsize: %lu, offset: %li)\n",
+		__func__, path, buf, bufsize, offset);
+
 	return __pread(db, path, buf, bufsize, offset);
 }
 
@@ -1629,6 +1658,9 @@ static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
+
+	verbose("%s(path: '%s', buf: %p, bufsize: %lu, offset: %li)\n",
+		__func__, path, buf, bufsize, offset);
 
 	return __pwrite(db, path, buf, bufsize, offset);
 }
@@ -1696,6 +1728,9 @@ static int sqlitefs_setxattr(const char *path, const char *name,
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
+	verbose("%s(path: %s, name: '%s', value: %p, size: %li, flags: %i)\n",
+		__func__, path, name, value, size, flags);
+
 	return __setxattr(db, path, name, value, size, flags);
 }
 
@@ -1706,6 +1741,9 @@ static int sqlitefs_getxattr(const char *path, const char *name, char *value,
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
+	verbose("%s(path: %s, name: '%s', value: %p, size: %li)\n", __func__,
+		path, name, value, size);
+
 	return __getxattr(db, path, name, value, size);
 }
 
@@ -1714,6 +1752,9 @@ static int sqlitefs_listxattr(const char *path, char *list, size_t size)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 
+	verbose("%s(path: %s, list: %p, size: %li)\n", __func__, path, list,
+		size);
+
 	return __listxattr(db, path, list, size);
 }
 
@@ -1721,6 +1762,8 @@ static int sqlitefs_listxattr(const char *path, char *list, size_t size)
 static int sqlitefs_removexattr(const char *path, const char *name)
 {
 	sqlite3 *db = fuse_get_context()->private_data;
+
+	verbose("%s(path: %s, name: '%s')\n", __func__, path, name);
 
 	return __removexattr(db, path, name);
 }
@@ -1757,6 +1800,9 @@ static int sqlitefs_readdir(const char *path, void *buffer,
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 	int ret;
+
+	verbose("%s(path: '%s', buffer: %p, offset: %li)\n", __func__, path,
+		buffer, offset);
 
 	ret = __readdir(db, path, buffer, filler, offset, fi, flags);
 	if (ret < 0)
@@ -1867,6 +1913,10 @@ static int sqlitefs_utimens(const char *path, const struct timespec tv[2],
 {
 	sqlite3 *db = fuse_get_context()->private_data;
 	(void)fi;
+
+	verbose("%s(path: '%s', timespec: { %li, %li }, { %li, %li })\n",
+		__func__, path, tv[0].tv_sec, tv[0].tv_nsec, tv[1].tv_sec,
+		tv[1].tv_nsec);
 
 	return __utimens(db, path, tv);
 }
