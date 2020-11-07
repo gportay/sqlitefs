@@ -315,14 +315,17 @@ struct readlink_data {
 static int readlink_cb(void *data, int argc, char **argv, char **colname)
 {
 	struct readlink_data *pdata = (struct readlink_data *)data;
+	size_t len;
 	int i;
 	(void)argc;
 	(void)colname;
 
 	i = 1;
-	pdata->error = strlen(argv[i]) >= pdata->len ? ENAMETOOLONG : 0;
+	len = strlen(argv[i]);
+	pdata->error = len >= pdata->len ? ENAMETOOLONG : 0;
 	if (pdata->buf)
 		strncpy(pdata->buf, argv[i++], pdata->len);
+	pdata->len = len;
 
 	return SQLITE_OK;
 }
