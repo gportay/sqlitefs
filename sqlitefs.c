@@ -1125,7 +1125,40 @@ static int __mkdir_lost_found(sqlite3 *db)
 }
 
 static int __getxattr(sqlite3 *db, const char *path, const char *name,
-		      char *value, size_t size);
+		      char *value, size_t size)
+{
+	struct getxattr_data data = {
+		.error = ENODATA,
+		.value = value,
+		.size = size,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "SELECT value "
+				   "FROM xattrs WHERE path = \"%s\" AND name = \"%s\";",
+		 path, name);
+	ret = sqlite3_exec(db, sql, getxattr_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -ENOTSUP;
+	}
+
+	if (data.error)
+		return -data.error;
+
+	if (VERBOSE)
+		if (value && size)
+			fprintgetfattr(stderr, path, name, value);
+
+	return data.size;
+}
+
 static int __setxattr(sqlite3 *db, const char *path, const char *name,
 		      const char *value, size_t size, int flags)
 {
@@ -1160,41 +1193,6 @@ static int __setxattr(sqlite3 *db, const char *path, const char *name,
 		fprintf(stderr, "%s", value);
 
 	return 0;
-}
-
-static int __getxattr(sqlite3 *db, const char *path, const char *name,
-		      char *value, size_t size)
-{
-	struct getxattr_data data = {
-		.error = ENODATA,
-		.value = value,
-		.size = size,
-	};
-	char sql[BUFSIZ];
-	char *e;
-	int ret;
-
-	if (!db)
-		return -EINVAL;
-
-	snprintf(sql, sizeof(sql), "SELECT value "
-				   "FROM xattrs WHERE path = \"%s\" AND name = \"%s\";",
-		 path, name);
-	ret = sqlite3_exec(db, sql, getxattr_cb, &data, &e);
-	if (ret != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -ENOTSUP;
-	}
-
-	if (data.error)
-		return -data.error;
-
-	if (VERBOSE)
-		if (value && size)
-			fprintgetfattr(stderr, path, name, value);
-
-	return data.size;
 }
 
 static int __listxattr(sqlite3 *db, const char *path, char *list, size_t size)
