@@ -321,7 +321,8 @@ static int readlink_cb(void *data, int argc, char **argv, char **colname)
 
 	i = 1;
 	pdata->error = strlen(argv[i]) >= pdata->len ? ENAMETOOLONG : 0;
-	strncpy(pdata->buf, argv[i++], pdata->len);
+	if (pdata->buf)
+		strncpy(pdata->buf, argv[i++], pdata->len);
 
 	return SQLITE_OK;
 }
