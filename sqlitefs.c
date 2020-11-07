@@ -2006,12 +2006,12 @@ static struct fuse_operations operations = {
 	/* .fsyncdir */
 	/* .init */
 	/* .destroy */
-	/*.access */
-	/*.create */
-	/*.lock */
+	/* .access */
+	/* .create */
+	/* .lock */
 	.utimens = sqlitefs_utimens,
-	/*.bmap */
-	/*.ioctl */
+	/* .bmap */
+	/* .ioctl */
 	/* .poll */
 	/* .write_buf */
 	/* .read_buf */
