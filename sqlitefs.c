@@ -145,6 +145,8 @@ static const char *uid_r(const uid_t uid, char *buf, size_t bufsize)
 
 	if (getpwuid_r(uid, &pwd, pwdbuf, sizeof(pwdbuf), &pwds) == 0)
 		name = pwd.pw_name;
+	else
+		perror("getpwuid_r");
 
 	snprintf(buf, bufsize, "%5i/%8s", uid, name);
 
@@ -160,6 +162,8 @@ static const char *gid_r(const gid_t gid, char *buf, size_t bufsize)
 
 	if (getgrgid_r(gid, &grp, grpbuf, sizeof(grpbuf), &grps) == 0)
 		name = grp.gr_name;
+	else
+		perror("getgrgid_r");
 
 	snprintf(buf, bufsize, "%5i/%8s", gid, name);
 
