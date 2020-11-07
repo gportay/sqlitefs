@@ -401,9 +401,40 @@ else
 fi
 echo
 
+run "Move symlink"
+if mv mountpoint/symlink mountpoint/trash &&
+   ! test -L mountpoint/symlink &&
+   test -L mountpoint/trash
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Read symbolic link"
+if readlink mountpoint/trash | tee /dev/stderr |
+   grep -q '^.Trash$'
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "List symbolic link"
+if ls -l mountpoint/trash | tee /dev/stderr |
+   grep -q "^lrwxrwxrwx 1 $USER $USER 6 .* mountpoint/trash -> .Trash\$"
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "Remove symlink"
-if rm mountpoint/symlink &&
-   ! test -L mountpoint/symlink
+if rm mountpoint/trash &&
+   ! test -L mountpoint/trash
 then
 	ok
 else

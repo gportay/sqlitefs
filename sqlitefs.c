@@ -972,6 +972,16 @@ static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
 		return -EIO;
 	}
 
+	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE symlinks SET "
+					"path=\"%s\" "
+				   "WHERE path=\"%s\";",
+		 newpath, oldpath);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
 	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE xattrs SET "
 					"path=\"%s\" "
 				   "WHERE path=\"%s\";",
