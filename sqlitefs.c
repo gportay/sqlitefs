@@ -1341,6 +1341,18 @@ static int __getfslabel(sqlite3 *db, const char *path, char *buf,
 	return 0;
 }
 
+static int __setfslabel(sqlite3 *db, const char *path, const char *label)
+{
+	int ret;
+	(void)path;
+
+	ret = __pwrite(db, "/.super/label", label, strlen(label) + 1, 0);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		   unsigned int flags, void *data)
 {
@@ -1352,6 +1364,8 @@ static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 
 	if (cmd == FS_IOC_GETFSLABEL)
 		return __getfslabel(db, path, (char *)data, FSLABEL_MAX);
+	else if (cmd == FS_IOC_SETFSLABEL)
+		return __setfslabel(db, path, (const char *)data);
 
 	return -ENOTSUP;
 }
@@ -2578,7 +2592,9 @@ out1:
 
 void sqlitefs_ioctl_usage(FILE *f, char * const argv0)
 {
-	fprintf(f, "usage: %s getfslabel <file>\n\n", argv0);
+	fprintf(f, "usage: %s getfslabel <file>\n"
+		   "       %s setfslabel <file> LABEL\n\n",
+		   argv0, argv0);
 }
 
 int sqlitefs_ioctl_main(int argc, char * const argv[])
@@ -2609,6 +2625,27 @@ int sqlitefs_ioctl_main(int argc, char * const argv[])
 	        }
 
 		printf("%s\n", buf);
+	} else if (__strncmp(argv[1], "setfslabel") == 0) {
+		if (argc < 4) {
+			sqlitefs_ioctl_usage(stdout, argv[0]);
+			fprintf(stderr, "Too few argument\n");
+			goto error;
+		} else if (argc > 4) {
+			sqlitefs_ioctl_usage(stdout, argv[0]);
+			fprintf(stderr, "%s: Too many argument\n", argv[4]);
+			goto error;
+		}
+
+		fd = open(argv[2], O_RDONLY);
+		if (fd == -1) {
+			perror("open");
+			exit(EXIT_FAILURE);
+		}
+
+		if (ioctl(fd, FS_IOC_SETFSLABEL, argv[3])) {
+	                perror("ioctl");
+			goto error;
+	        }
 	} else {
 		sqlitefs_ioctl_usage(stdout, argv[0]);
 		fprintf(stderr, "%s: Invalid argument\n", argv[1]);

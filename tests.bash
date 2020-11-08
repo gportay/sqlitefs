@@ -112,6 +112,25 @@ else
 fi
 echo
 
+run "Set filesystem label"
+if sqlitefs-ioctl setfslabel mountpoint "fs"
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Get filesystem label"
+if sqlitefs-ioctl getfslabel mountpoint | tee /dev/stderr | \
+   grep -q 'fs'
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "List directory content"
 if ls -1a mountpoint | tee /dev/stderr | \
    grep '.lost+found'
