@@ -1327,6 +1327,21 @@ static int __removexattr(sqlite3 *db, const char *path, const char *name)
 	return 0;
 }
 
+static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
+		   unsigned int flags, void *data)
+{
+	(void)path;
+	(void)cmd;
+	(void)arg;
+	(void)flags;
+	(void)data;
+
+	if (!db)
+		return -EINVAL;
+
+	return -ENOTSUP;
+}
+
 static int mkfs(const char *path, const char *label)
 {
 	char sql[BUFSIZ], uuid[37];
@@ -2013,8 +2028,22 @@ static int sqlitefs_utimens(const char *path, const struct timespec tv[2],
  * Note : the unsigned long request submitted by the application
  * is truncated to 32 bits.
  */
-/* int (*ioctl) (const char *, unsigned int cmd, void *arg,
-		 struct fuse_file_info *, unsigned int, void *); */
+#if FUSE_USE_VERSION < 35
+int sqlitefs_ioctl(const char *path, int cmd, void *arg,
+		   struct fuse_file_info *fi, unsigned int flags, void *data)
+#else
+int sqlitefs_ioctl(const char *path, unsigned int cmd, void *arg,
+		   struct fuse_file_info *fi, unsigned int flags, void *data)
+#endif
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+	(void)fi;
+
+	verbose("%s(path: '%s', cmd: %u, arg: %p, flags: %u, data: %p)\n",
+		__func__, path, cmd, arg, flags, data);
+
+	return __ioctl(db, path, cmd, arg, flags, data);
+}
 
 /**
  * Poll for IO readiness events
@@ -2146,7 +2175,7 @@ static struct fuse_operations operations = {
 	/* .lock */
 	.utimens = sqlitefs_utimens,
 	/* .bmap */
-	/* .ioctl */
+	.ioctl = sqlitefs_ioctl,
 	/* .poll */
 	/* .write_buf */
 	/* .read_buf */
