@@ -1146,6 +1146,59 @@ static int __mkdir_lost_found(sqlite3 *db)
 	return 0;
 }
 
+static int __mksuper(sqlite3 *db, const char *label, const char *uuid)
+{
+	const char *path = "/.super";
+	struct timespec now;
+	struct stat st;
+	int ret;
+
+	if (!db)
+		return -EINVAL;
+
+	ret = __stat(db, path, &st);
+	if (ret == 0)
+		return 0;
+	else if (ret != -ENOENT)
+		return ret;
+
+	ret = __mkdir(db, path, 0755);
+	if (ret)
+		return ret;
+
+	if (clock_gettime(CLOCK_REALTIME, &now)) {
+		perror("clock_gettime");
+		return -errno;
+	}
+
+	memset(&st, 0, sizeof(struct stat));
+	/* Ignored st.st_dev = 0; */
+	/* Ignored st.st_ino = 0; */
+	st.st_mode = S_IFREG | ACCESSPERMS;
+	st.st_nlink = 1;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	/* Ignored st.st_blksize = 0; */
+	st.st_atim = now;
+	st.st_mtim = now;
+	st.st_ctim = now;
+
+	if (label) {
+		ret = add_file(db, "/.super/label", label, strlen(label) + 1, &st);
+		if (ret)
+			goto exit;
+	}
+
+	if (uuid) {
+		ret = add_file(db, "/.super/uuid", uuid, strlen(uuid) + 1, &st);
+		if (ret)
+			goto exit;
+	}
+
+exit:
+	return ret;
+}
+
 static int __getxattr(sqlite3 *db, const char *path, const char *name,
 		      char *value, size_t size)
 {
@@ -1357,23 +1410,8 @@ static int mkfs(const char *path, const char *label)
 	strncpy(uuid, "00000000-0000-0000-0000-000000000000", sizeof(uuid));
 #endif
 
-	snprintf(sql, sizeof(sql), "CREATE TABLE IF NOT EXISTS super("
-				   "uuid TEXT NOT NULL PRIMARY KEY, "
-				   "label TEXT NOT NULL);");
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
+	if (__mksuper(db, label, uuid))
 		goto error;
-	}
-
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO super(uuid, label) "
-		 		   "VALUES(\"%s\", \"%s\");",
-		 		   uuid, label);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
 
 	return 0;
 
