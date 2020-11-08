@@ -33,6 +33,10 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <sqlite3.h>
 #include <pthread.h>
 
+#ifdef HAVE_UUID
+#include <uuid.h>
+#endif
+
 #include <linux/limits.h>
 #include <linux/fs.h>
 
@@ -1272,7 +1276,7 @@ static int __removexattr(sqlite3 *db, const char *path, const char *name)
 
 static int mkfs(const char *path)
 {
-	char sql[BUFSIZ];
+	char sql[BUFSIZ], uuid[37];
 	struct stat st;
 	sqlite3 *db;
 	int exists;
@@ -1344,6 +1348,31 @@ static int mkfs(const char *path)
 
 	if (__mkdir_lost_found(db))
 		goto error;
+
+#ifdef HAVE_UUID
+	uuid_t gen_uuid;
+	uuid_generate(gen_uuid);
+	uuid_unparse_lower(gen_uuid, uuid);
+#else
+	strncpy(uuid, "00000000-0000-0000-0000-000000000000", sizeof(uuid));
+#endif
+
+	snprintf(sql, sizeof(sql), "CREATE TABLE IF NOT EXISTS super("
+				   "uuid TEXT NOT NULL PRIMARY KEY);");
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto error;
+	}
+
+	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO super(uuid) "
+		 		   "VALUES(\"%s\");",
+		 		   uuid);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
 
 	return 0;
 

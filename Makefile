@@ -5,8 +5,8 @@
 #  SPDX-License-Identifier: LGPL-2.1
 #
 
-override CFLAGS += $(shell pkg-config sqlite3 fuse3 --cflags)
-override LDLIBS += $(shell pkg-config sqlite3 fuse3 --libs)
+override CFLAGS += $(shell pkg-config sqlite3 fuse3 uuid --cflags)
+override LDLIBS += $(shell pkg-config sqlite3 fuse3 uuid --libs)
 
 all: sqlitefs mkfs.sqlitefs fsck.sqlitefs
 
@@ -25,6 +25,9 @@ config.h:
 	echo "#define CONFIG_H" >>$@.tmp
 	echo "#define PACKAGE_NAME \"$(NAME)\"" >>$@.tmp
 	echo "#define PACKAGE_VERSION \"$(VERSION)\"" >>$@.tmp
+	if pkg-config --exists uuid; then \
+		echo "#define HAVE_UUID 1" >>$@.tmp; \
+	fi
 	echo "#endif" >>$@.tmp
 	mv $@.tmp $@
 
