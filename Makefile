@@ -10,6 +10,27 @@ override LDLIBS += $(shell pkg-config sqlite3 fuse3 --libs)
 
 all: sqlitefs mkfs.sqlitefs fsck.sqlitefs
 
+.SILENT: config.h
+ifeq ($(VERSION),)
+config.h: NAME = sqlitefs
+config.h: VERSION = git-$(shell git describe --always --dirty)
+endif
+config.h:
+	echo "/*" >$@.tmp
+	echo " * Automatically generated file; DO NOT EDIT." >>$@.tmp
+	echo " * sqlitfs $(VERSION) Configuration" >>$@.tmp
+	echo " */" >>$@.tmp
+	echo "" >>$@.tmp
+	echo "#ifndef CONFIG_H" >>$@.tmp
+	echo "#define CONFIG_H" >>$@.tmp
+	echo "#define PACKAGE_NAME \"$(NAME)\"" >>$@.tmp
+	echo "#define PACKAGE_VERSION \"$(VERSION)\"" >>$@.tmp
+	echo "#endif" >>$@.tmp
+	mv $@.tmp $@
+
+sqlitefs: config.h
+sqlitefs: override CFLAGS += -DHAVE_CONFIG_H
+
 .PHONY: doc
 doc: sqlitefs.1.gz
 
@@ -103,6 +124,10 @@ perf.data: sqlitefs fs.db | mountpoint
 .PHONY: clean
 clean:
 	rm -f sqlitefs mkfs.sqlitefs fs.db failed.db perf.data
+
+.PHONY: mrproper
+mrproper: clean
+	rm -f config.h
 
 %.: SHELL = /bin/bash
 %.iid: Dockerfile
