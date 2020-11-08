@@ -45,7 +45,7 @@ sqlitefs: override CFLAGS += -g -Wall -Wextra -Werror
 sqlitefs:
 
 fs.db: | mkfs.sqlitefs
-	./mkfs.sqlitefs $@
+	./mkfs.sqlitefs $@ $(basename $(@F))
 
 .SILENT: failed.db
 failed.db:

@@ -1274,7 +1274,7 @@ static int __removexattr(sqlite3 *db, const char *path, const char *name)
 	return 0;
 }
 
-static int mkfs(const char *path)
+static int mkfs(const char *path, const char *label)
 {
 	char sql[BUFSIZ], uuid[37];
 	struct stat st;
@@ -1358,16 +1358,17 @@ static int mkfs(const char *path)
 #endif
 
 	snprintf(sql, sizeof(sql), "CREATE TABLE IF NOT EXISTS super("
-				   "uuid TEXT NOT NULL PRIMARY KEY);");
+				   "uuid TEXT NOT NULL PRIMARY KEY, "
+				   "label TEXT NOT NULL);");
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
 		goto error;
 	}
 
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO super(uuid) "
-		 		   "VALUES(\"%s\");",
-		 		   uuid);
+	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO super(uuid, label) "
+		 		   "VALUES(\"%s\", \"%s\");",
+		 		   uuid, label);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -2499,7 +2500,7 @@ int main(int argc, char *argv[])
 	int ret;
 
 	if (__strncmp(basename(argv[0]), "mkfs.sqlitefs") == 0) {
-		ret = mkfs(argv[1]);
+		ret = mkfs(argv[1], argc < 3 ? "" : argv[2]);
 		if (ret)
 			__exit_perror(argv[1], -ret);
 
