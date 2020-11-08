@@ -26,6 +26,7 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/xattr.h>
+#include <sys/ioctl.h>
 
 #include <libgen.h>
 #include <fuse.h>
@@ -1327,17 +1328,30 @@ static int __removexattr(sqlite3 *db, const char *path, const char *name)
 	return 0;
 }
 
+static int __getfslabel(sqlite3 *db, const char *path, char *buf,
+			size_t bufsize)
+{
+	int ret;
+	(void)path;
+
+	ret = __pread(db, "/.super/label", buf, bufsize, 0);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		   unsigned int flags, void *data)
 {
-	(void)path;
-	(void)cmd;
 	(void)arg;
 	(void)flags;
-	(void)data;
 
 	if (!db)
 		return -EINVAL;
+
+	if (cmd == FS_IOC_GETFSLABEL)
+		return __getfslabel(db, path, (char *)data, FSLABEL_MAX);
 
 	return -ENOTSUP;
 }
@@ -2562,6 +2576,54 @@ out1:
 	return res;
 }
 
+void sqlitefs_ioctl_usage(FILE *f, char * const argv0)
+{
+	fprintf(f, "usage: %s getfslabel <file>\n\n", argv0);
+}
+
+int sqlitefs_ioctl_main(int argc, char * const argv[])
+{
+	int ret = EXIT_FAILURE, fd = -1;
+
+	if (argc < 3) {
+		sqlitefs_ioctl_usage(stdout, argv[0]);
+		fprintf(stderr, "Too few argument\n");
+	} else if (__strncmp(argv[1], "getfslabel") == 0) {
+		char buf[FSLABEL_MAX];
+
+		if (argc > 3) {
+			sqlitefs_ioctl_usage(stdout, argv[0]);
+			fprintf(stderr, "%s: Too many argument\n", argv[3]);
+			goto error;
+		}
+
+		fd = open(argv[2], O_RDONLY);
+		if (fd == -1) {
+			perror("open");
+			exit(EXIT_FAILURE);
+		}
+
+		if (ioctl(fd, FS_IOC_GETFSLABEL, buf)) {
+	                perror("ioctl");
+			goto error;
+	        }
+
+		printf("%s\n", buf);
+	} else {
+		sqlitefs_ioctl_usage(stdout, argv[0]);
+		fprintf(stderr, "%s: Invalid argument\n", argv[1]);
+	}
+
+	ret = EXIT_SUCCESS;
+
+error:
+	if (fd != -1)
+		if (close(fd))
+			perror("close");
+
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret;
@@ -2581,6 +2643,9 @@ int main(int argc, char *argv[])
 
 		return EXIT_SUCCESS;
 	}
+
+	if (__strncmp(basename(argv[0]), "sqlitefs-ioctl") == 0)
+		return sqlitefs_ioctl_main(argc, argv);
 
 	return sqlitefs_main(argc, argv, &operations, sizeof(operations), NULL);
 }
