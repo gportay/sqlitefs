@@ -1468,6 +1468,26 @@ static int __getflags(sqlite3 *db, const char *path, int *flags)
 	return 0;
 }
 
+static int __setflags(sqlite3 *db, const char *path, int flags)
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	if (!db)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO flags(path, flags)"
+		                   "VALUES(\"%s\", %i);",
+	        	           path, flags);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
+}
+
 static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		   unsigned int flags, void *data)
 {
@@ -1487,6 +1507,8 @@ static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		return __setversion(db, path, *(int *)data);
 	else if (cmd == FS_IOC_GETFLAGS)
 		return __getflags(db, path, (int *)data);
+	else if (cmd == FS_IOC_SETFLAGS)
+		return __setflags(db, path, *(int *)data);
 
 	return -ENOTSUP;
 }
@@ -2727,8 +2749,9 @@ void sqlitefs_ioctl_usage(FILE *f, char * const argv0)
 		   "       %s setfslabel <file> LABEL\n"
 		   "       %s getversion <file>\n"
 		   "       %s setversion <file> VERSION\n"
-		   "       %s getflags <file>\n\n",
-		   argv0, argv0, argv0, argv0, argv0);
+		   "       %s getflags <file>\n"
+		   "       %s setflags <file> FLAGS\n\n",
+		   argv0, argv0, argv0, argv0, argv0, argv0);
 }
 
 int sqlitefs_ioctl_main(int argc, char * const argv[])
@@ -2853,6 +2876,37 @@ int sqlitefs_ioctl_main(int argc, char * const argv[])
 	        }
 
 		printf("%i\n", flags);
+	} else if (__strncmp(argv[1], "setflags") == 0) {
+		char *e;
+		int i;
+
+		if (argc < 4) {
+			sqlitefs_ioctl_usage(stdout, argv[0]);
+			fprintf(stderr, "Too few argument\n");
+			goto error;
+		} else if (argc > 4) {
+			sqlitefs_ioctl_usage(stdout, argv[0]);
+			fprintf(stderr, "%s: Too many argument\n", argv[4]);
+			goto error;
+		}
+
+		fd = open(argv[2], O_RDONLY);
+		if (fd == -1) {
+			perror("open");
+			exit(EXIT_FAILURE);
+		}
+
+		i = __strtoi(argv[3], &e, 0);
+		if (*e) {
+			perror("__strtoi");
+			verbose("__strtoi: %s\n", e);
+			goto error;
+		}
+
+		if (ioctl(fd, FS_IOC_SETFLAGS, &i)) {
+	                perror("ioctl");
+			goto error;
+	        }
 	} else {
 		sqlitefs_ioctl_usage(stdout, argv[0]);
 		fprintf(stderr, "%s: Invalid argument\n", argv[1]);

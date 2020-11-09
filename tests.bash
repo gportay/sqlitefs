@@ -131,6 +131,25 @@ else
 fi
 echo
 
+run "Set flags"
+if sqlitefs-ioctl setflags mountpoint/.super/version 0
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Get flags"
+if sqlitefs-ioctl getflags mountpoint/.super/version | tee /dev/stderr | \
+   grep -q '0'
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "List directory content"
 if ls -1a mountpoint | tee /dev/stderr | \
    grep '.lost+found'
