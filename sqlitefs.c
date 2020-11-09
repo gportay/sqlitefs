@@ -497,13 +497,13 @@ static int add_file(sqlite3 *db, const char *path, const void *data,
 	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
-		 "data, st_dev, st_mode, st_nlink, st_uid, st_gid, "
+		 "data, flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
 		 "st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
 		 "st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
 		 "st_ctim_nsec) "
-		 "VALUES(\"%s\", \"%s\", ?, %lu, %u, %lu, %u, %u, %lu, "
+		 "VALUES(\"%s\", \"%s\", ?, %i, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, st->st_dev, st->st_mode,
+		 path, parent, 0, st->st_dev, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, datasize,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -609,12 +609,12 @@ static int add_directory(sqlite3 *db, const char *path, const struct stat *st)
 	dirname(parent);
 
 	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
-		 "st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
+		 "flags, st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
 		 "st_size, st_blksize, st_blocks, st_atim_sec, st_atim_nsec, "
 		 "st_mtim_sec, st_mtim_nsec, st_ctim_sec, st_ctim_nsec) "
-		 "VALUES(\"%s\", \"%s\", %lu, %u, %lu, %u, %u, %lu, %lu, "
+		 "VALUES(\"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, %lu, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, st->st_dev, st->st_mode,
+		 path, parent, 0, st->st_dev, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, st->st_size,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -1448,7 +1448,7 @@ static int __getflags(sqlite3 *db, const char *path, int *flags)
 		return -EINVAL;
 
 	snprintf(sql, sizeof(sql), "SELECT path, flags "
-				   "FROM flags WHERE path = \"%s\";",
+				   "FROM files WHERE path = \"%s\";",
 		                   path);
 	ret = sqlite3_exec(db, sql, getflags_cb, &data, &e);
 	if (ret != SQLITE_OK) {
@@ -1476,9 +1476,10 @@ static int __setflags(sqlite3 *db, const char *path, int flags)
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO flags(path, flags)"
-		                   "VALUES(\"%s\", %i);",
-	        	           path, flags);
+	snprintf(sql, sizeof(sql), "UPDATE files SET "
+					"flags=%i "
+				   "WHERE path=\"%s\";",
+	        	           flags, path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1538,6 +1539,7 @@ static int mkfs(const char *path, const char *label)
 				"path TEXT NOT NULL PRIMARY KEY, "
 				"parent TEXT NOT NULL, "
 				"data BLOB, "
+				"flags INT(8), "
 				"st_dev INT(8), "
 				"st_mode INT(4), "
 				"st_nlink INT(8), "
@@ -1576,16 +1578,6 @@ static int mkfs(const char *path, const char *label)
 				"name TEXT NOT NULL, "
 				"value TEXT NOT NULL, "
 				"PRIMARY KEY (path, name));");
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		goto error;
-	}
-
-	snprintf(sql, sizeof(sql),
-		 "CREATE TABLE IF NOT EXISTS flags("
-				"path TEXT NOT NULL PRIMARY KEY, "
-				"flags INT(8));");
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
