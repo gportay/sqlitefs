@@ -438,6 +438,25 @@ static int orphan_cb(void *data, int argc, char **argv, char **colname)
 	return SQLITE_OK;
 }
 
+struct getflags_data {
+	int error;
+	int flags;
+};
+
+static int getflags_cb(void *data, int argc, char **argv, char **colname)
+{
+	struct getflags_data *pdata = (struct getflags_data *)data;
+	int i;
+	(void)argc;
+	(void)colname;
+
+	i = 1;
+	pdata->error = 0;
+	pdata->flags = __strtoi(argv[i++], NULL, 0);
+
+	return SQLITE_OK;
+}
+
 static int lost_found(sqlite3 *db)
 {
 	struct orphan_data data = {
@@ -1415,6 +1434,40 @@ static int __setversion(sqlite3 *db, const char *path, int version)
 	return 0;
 }
 
+static int __getflags(sqlite3 *db, const char *path, int *flags)
+{
+	struct getflags_data data = {
+		.error = ENOENT, 
+		.flags = 0,
+	};
+	char sql[BUFSIZ];
+	char *e;
+	int ret;
+
+	if (!db || !flags)
+		return -EINVAL;
+
+	snprintf(sql, sizeof(sql), "SELECT path, flags "
+				   "FROM flags WHERE path = \"%s\";",
+		                   path);
+	ret = sqlite3_exec(db, sql, getflags_cb, &data, &e);
+	if (ret != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -ENOTSUP;
+	}
+
+	if (data.error)
+		return -data.error;
+
+	if (VERBOSE)
+		fprintf(stderr, "%i\n", data.flags);
+
+	*flags = data.flags;
+
+	return 0;
+}
+
 static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		   unsigned int flags, void *data)
 {
@@ -1432,6 +1485,8 @@ static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		return __getversion(db, path, (int*)data);
 	else if (cmd == FS_IOC_SETVERSION)
 		return __setversion(db, path, *(int *)data);
+	else if (cmd == FS_IOC_GETFLAGS)
+		return __getflags(db, path, (int *)data);
 
 	return -ENOTSUP;
 }
@@ -1499,6 +1554,16 @@ static int mkfs(const char *path, const char *label)
 				"name TEXT NOT NULL, "
 				"value TEXT NOT NULL, "
 				"PRIMARY KEY (path, name));");
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto error;
+	}
+
+	snprintf(sql, sizeof(sql),
+		 "CREATE TABLE IF NOT EXISTS flags("
+				"path TEXT NOT NULL PRIMARY KEY, "
+				"flags INT(8));");
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -2661,8 +2726,9 @@ void sqlitefs_ioctl_usage(FILE *f, char * const argv0)
 	fprintf(f, "usage: %s getfslabel <file>\n"
 		   "       %s setfslabel <file> LABEL\n"
 		   "       %s getversion <file>\n"
-		   "       %s setversion <file> VERSION\n\n",
-		   argv0, argv0, argv0, argv0);
+		   "       %s setversion <file> VERSION\n"
+		   "       %s getflags <file>\n\n",
+		   argv0, argv0, argv0, argv0, argv0);
 }
 
 int sqlitefs_ioctl_main(int argc, char * const argv[])
@@ -2766,6 +2832,27 @@ int sqlitefs_ioctl_main(int argc, char * const argv[])
 	                perror("ioctl");
 			goto error;
 	        }
+	} else if (__strncmp(argv[1], "getflags") == 0) {
+		int flags;
+
+		if (argc > 3) {
+			sqlitefs_ioctl_usage(stdout, argv[0]);
+			fprintf(stderr, "%s: Too many argument\n", argv[3]);
+			goto error;
+		}
+
+		fd = open(argv[2], O_RDONLY);
+		if (fd == -1) {
+			perror("open");
+			exit(EXIT_FAILURE);
+		}
+
+		if (ioctl(fd, FS_IOC_GETFLAGS, &flags)) {
+	                perror("ioctl");
+			goto error;
+	        }
+
+		printf("%i\n", flags);
 	} else {
 		sqlitefs_ioctl_usage(stdout, argv[0]);
 		fprintf(stderr, "%s: Invalid argument\n", argv[1]);
