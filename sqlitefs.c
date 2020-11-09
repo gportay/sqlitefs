@@ -23,6 +23,7 @@ const char PACKAGE_VERSION[] = __DATE__ " " __TIME__;
 #include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/xattr.h>
@@ -64,6 +65,26 @@ static int DEBUG = 0;
 })
 
 #define __strncmp(s1, s2) strncmp(s1, s2, sizeof(s2) - 1)
+
+static inline int __strtoi(const char *nptr, char **endptr, int base)
+{
+	long l;
+	
+	errno = 0;
+	l = strtol(nptr, endptr, base);
+	if (endptr && *endptr)
+		return l;
+
+	if (l < INT_MIN) {
+		errno = ERANGE;
+		l = INT_MIN;
+	} else if (l > INT_MAX) {
+		errno = ERANGE;
+		l = INT_MAX;
+	}
+
+	return l;
+}
 
 #define __exit_perror(s, e) do {\
 	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
@@ -1184,6 +1205,10 @@ static int __mksuper(sqlite3 *db, const char *label, const char *uuid)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
+	ret = add_file(db, "/.super/version", "0", strlen("0") + 1, &st);
+	if (ret)
+		goto exit;
+
 	if (label) {
 		ret = add_file(db, "/.super/label", label, strlen(label) + 1, &st);
 		if (ret)
@@ -1353,6 +1378,30 @@ static int __setfslabel(sqlite3 *db, const char *path, const char *label)
 	return 0;
 }
 
+static int __getversion(sqlite3 *db, const char *path, int *version)
+{
+	char buf[BUFSIZ];
+	char *e;
+	int i, ret;
+	(void)path;
+
+	ret = __pread(db, "/.super/version", buf, sizeof(buf), 0);
+	if (ret < 0)
+		return ret;
+	buf[ret] = 0; // Make sure buf is NUL terminated.
+
+	i = __strtoi(buf, &e, 0);
+	if (*e) {
+		verbose("%s\n", e);
+		perror("strtol");
+		return -errno;
+        }
+
+	*version = i;
+
+	return 0;
+}
+
 static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		   unsigned int flags, void *data)
 {
@@ -1366,6 +1415,8 @@ static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		return __getfslabel(db, path, (char *)data, FSLABEL_MAX);
 	else if (cmd == FS_IOC_SETFSLABEL)
 		return __setfslabel(db, path, (const char *)data);
+	else if (cmd == FS_IOC_GETVERSION)
+		return __getversion(db, path, (int*)data);
 
 	return -ENOTSUP;
 }
@@ -2593,8 +2644,9 @@ out1:
 void sqlitefs_ioctl_usage(FILE *f, char * const argv0)
 {
 	fprintf(f, "usage: %s getfslabel <file>\n"
-		   "       %s setfslabel <file> LABEL\n\n",
-		   argv0, argv0);
+		   "       %s setfslabel <file> LABEL\n"
+		   "       %s getversion <file>\n\n",
+		   argv0, argv0, argv0);
 }
 
 int sqlitefs_ioctl_main(int argc, char * const argv[])
@@ -2646,6 +2698,27 @@ int sqlitefs_ioctl_main(int argc, char * const argv[])
 	                perror("ioctl");
 			goto error;
 	        }
+	} else if (__strncmp(argv[1], "getversion") == 0) {
+		int version;
+
+		if (argc > 3) {
+			sqlitefs_ioctl_usage(stdout, argv[0]);
+			fprintf(stderr, "%s: Too many argument\n", argv[3]);
+			goto error;
+		}
+
+		fd = open(argv[2], O_RDONLY);
+		if (fd == -1) {
+			perror("open");
+			exit(EXIT_FAILURE);
+		}
+
+		if (ioctl(fd, FS_IOC_GETVERSION, &version)) {
+	                perror("ioctl");
+			goto error;
+	        }
+
+		printf("%i\n", version);
 	} else {
 		sqlitefs_ioctl_usage(stdout, argv[0]);
 		fprintf(stderr, "%s: Invalid argument\n", argv[1]);
