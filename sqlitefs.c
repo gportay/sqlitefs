@@ -546,7 +546,6 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	struct timespec now;
 	struct stat st;
 	char *e;
-	int ret;
 
 	if (!db || !linkname || !path)
 		return -EINVAL;
@@ -559,16 +558,6 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	strncpy(parent, path, sizeof(parent));
 	dirname(parent);
 
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO symlinks(path, parent, "
-		 "linkname) "
-		 "VALUES(\"%s\", \"%s\", \"%s\");",
-		 path, parent, linkname);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
 	memset(&st, 0, sizeof(struct stat));
 	/* Ignored st.st_dev = 0; */
 	/* Ignored st.st_ino = 0; */
@@ -576,25 +565,31 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	st.st_nlink = 1;
 	st.st_uid = getuid();
 	st.st_gid = getgid();
+	st.st_size = strlen(linkname);
 	/* Ignored st.st_blksize = 0; */
 	st.st_atim = now;
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	ret = add_file(db, path, NULL, strlen(linkname), &st);
-	if (ret) {
-		snprintf(sql, sizeof(sql), "DELETE FROM symlinks "
-					   "WHERE path=\"%s\";",
-			 path);
-		if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-			fprintf(stderr, "sqlite3_exec: %s\n", e);
-			sqlite3_free(e);
-		}
-
-		return ret;
+	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
+		 "linkname, flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
+		 "st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
+		 "st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
+		 "st_ctim_nsec) "
+		 "VALUES(\"%s\", \"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, "
+		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
+		 path, parent, linkname, 0, st.st_dev, st.st_mode, st.st_nlink,
+		 st.st_uid, st.st_gid, st.st_rdev, st.st_size, st.st_blksize,
+		 st.st_blocks, st.st_atim.tv_sec, st.st_atim.tv_nsec,
+		 st.st_mtim.tv_sec, st.st_mtim.tv_nsec, st.st_ctim.tv_sec,
+		 st.st_ctim.tv_nsec);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int add_directory(sqlite3 *db, const char *path, const struct stat *st)
@@ -1023,16 +1018,6 @@ static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
 		return -EIO;
 	}
 
-	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE symlinks SET "
-					"path=\"%s\" "
-				   "WHERE path=\"%s\";",
-		 newpath, oldpath);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
 	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE xattrs SET "
 					"path=\"%s\" "
 				   "WHERE path=\"%s\";",
@@ -1055,15 +1040,6 @@ static int __unlink(sqlite3 *db, const char *path)
 		return -EINVAL;
 
 	snprintf(sql, sizeof(sql), "DELETE FROM files "
-				   "WHERE path=\"%s\";",
-		 path);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	snprintf(sql, sizeof(sql), "DELETE FROM symlinks "
 				   "WHERE path=\"%s\";",
 		 path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
@@ -1106,7 +1082,7 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 	snprintf(sql, sizeof(sql), "SELECT "
 					"path, "
 					"linkname "
-				   "FROM symlinks WHERE path = \"%s\";",
+				   "FROM files WHERE path = \"%s\";",
 		 path);
 	ret = sqlite3_exec(db, sql, readlink_cb, &data, &e);
 	if (ret != SQLITE_OK) {
@@ -1538,6 +1514,7 @@ static int mkfs(const char *path, const char *label)
 		 "CREATE TABLE IF NOT EXISTS files("
 				"path TEXT NOT NULL PRIMARY KEY, "
 				"parent TEXT NOT NULL, "
+				"linkname TEXT, "
 				"data BLOB, "
 				"flags INT(8), "
 				"st_dev INT(8), "
@@ -1555,17 +1532,6 @@ static int mkfs(const char *path, const char *label)
 				"st_mtim_nsec INT(8), "
 				"st_ctim_sec INT(8), "
 				"st_ctim_nsec INT(8));");
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		goto error;
-	}
-
-	snprintf(sql, sizeof(sql),
-		 "CREATE TABLE IF NOT EXISTS symlinks("
-				"path TEXT NOT NULL PRIMARY KEY, "
-				"parent TEXT NOT NULL, "
-				"linkname TEXT NOT NULL);");
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
