@@ -95,8 +95,6 @@ static inline int __strtoi(const char *nptr, char **endptr, int base)
 	fprintf(stderr, "%s: %s\n", s, strerror(e)); \
 } while (0)
 
-#define __data(s) s, sizeof(s) - 1
-
 #define __sqlite3_perror(s, db) do { \
 	fprintf(stderr, "%s: %s\n", s, sqlite3_errmsg(db)); \
 } while (0)
