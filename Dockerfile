@@ -45,4 +45,4 @@ RUN git clone https://aur.archlinux.org/pacaur-git.git $home/src/pacaur-git
 WORKDIR $home/src/pacaur-git
 RUN makepkg --skippgpcheck --syncdeps --install --noconfirm
 
-RUN pacaur --noconfirm -S perf hotspot
+RUN pacaur --noconfirm -Sy perf hotspot
