@@ -109,6 +109,58 @@ static inline int __strtoi(const char *nptr, char **endptr, int base)
 # define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO)
 #endif
 
+static int getattr_cb(void *data, int argc, char **argv, char **colname);
+static int getxattr_cb(void *data, int argc, char **argv, char **colname);
+static int listxattr_cb(void *data, int argc, char **argv, char **colname);
+static int readlink_cb(void *data, int argc, char **argv, char **colname);
+static int readdir_cb(void *data, int argc, char **argv, char **colname);
+static int __readdir(sqlite3 *db, const char *path, void *buffer,
+		     fuse_fill_dir_t filler, off_t offset,
+		     struct fuse_file_info *fi,
+		     enum fuse_readdir_flags flags);
+static int orphan_cb(void *data, int argc, char **argv, char **colname);
+static int getflags_cb(void *data, int argc, char **argv, char **colname);
+static int lost_found(sqlite3 *db);
+static int add_file(sqlite3 *db, const char *path, const void *data,
+		    size_t datasize, const struct stat *st);
+static int add_symlink(sqlite3 *db, const char *linkname, const char *path);
+static int add_directory(sqlite3 *db, const char *path, const struct stat *st);
+static int __stat(sqlite3 *db, const char *path, struct stat *st);
+
+static int __chmod(sqlite3 *db, const char *path, mode_t mode);
+static int __chown(sqlite3 *db, const char *path, uid_t uid, gid_t gid);
+static int __utimens(sqlite3 *db, const char *path,
+		     const struct timespec tv[2]);
+static ssize_t __pread(sqlite3 *db, const char *path, char *buf,
+		       size_t bufsize, off_t offset);
+static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
+			size_t bufsize, off_t offset);
+static int __truncate(sqlite3 *db, const char *path, off_t size);
+static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev);
+static int __rename(sqlite3 *db, const char *oldpath, const char *newpath);
+static int __unlink(sqlite3 *db, const char *path);
+static int __symlink(sqlite3 *db, const char *linkname, const char *path);
+static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len);
+static int __mkdir(sqlite3 *db, const char *path, mode_t mode);
+static int __rmdir(sqlite3 *db, const char *path);
+static int __mkdir_lost_found(sqlite3 *db);
+static int __mksuper(sqlite3 *db, const char *label, const char *uuid);
+static int __getxattr(sqlite3 *db, const char *path, const char *name,
+		      char *value, size_t size);
+static int __setxattr(sqlite3 *db, const char *path, const char *name,
+		      const char *value, size_t size, int flags);
+static int __listxattr(sqlite3 *db, const char *path, char *list, size_t size);
+static int __removexattr(sqlite3 *db, const char *path, const char *name);
+static int __getfslabel(sqlite3 *db, const char *path, char *buf,
+			size_t bufsize);
+static int __setfslabel(sqlite3 *db, const char *path, const char *label);
+static int __getversion(sqlite3 *db, const char *path, int *version);
+static int __setversion(sqlite3 *db, const char *path, int version);
+static int __getflags(sqlite3 *db, const char *path, int *flags);
+static int __setflags(sqlite3 *db, const char *path, int flags);
+static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
+		   unsigned int flags, void *data);
+
 static const char *filetype_r(mode_t mode, char *buf, size_t bufsize)
 {
 	if (S_ISREG(mode))
