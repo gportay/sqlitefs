@@ -122,7 +122,7 @@ static int __readdir(sqlite3 *db, const char *path, void *buffer,
 static int orphan_cb(void *data, int argc, char **argv, char **colname);
 static int getflags_cb(void *data, int argc, char **argv, char **colname);
 static int lost_found(sqlite3 *db);
-static int add_file(sqlite3 *db, const char *path, const void *data,
+static int __mkfile(sqlite3 *db, const char *path, const void *data,
 		    size_t datasize, const struct stat *st, int flags);
 static int __stat(sqlite3 *db, const char *path, struct stat *st);
 
@@ -534,7 +534,7 @@ static int lost_found(sqlite3 *db)
 	return data.count;
 }
 
-static int add_file(sqlite3 *db, const char *path, const void *data,
+static int __mkfile(sqlite3 *db, const char *path, const void *data,
 		    size_t datasize, const struct stat *st, int flags)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
@@ -864,14 +864,14 @@ static ssize_t __pwrite_mutable(sqlite3 *db, const char *path, const char *buf,
 
 		memcpy(data + offset, buf, bufsize);
 
-		ret = add_file(db, path, data, datasize, &st, flags);
+		ret = __mkfile(db, path, data, datasize, &st, flags);
 		if (ret)
 			goto exit;
 
 		goto exit;
 	}
 
-	ret = add_file(db, path, buf, bufsize, &st, flags);
+	ret = __mkfile(db, path, buf, bufsize, &st, flags);
 	if (ret)
 		return ret;
 
@@ -981,7 +981,7 @@ static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return add_file(db, path, NULL, 0, &st, 0);
+	return __mkfile(db, path, NULL, 0, &st, 0);
 }
 
 static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
@@ -1072,7 +1072,7 @@ static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return add_file(db, path, linkname, strlen(linkname), &st, 0);
+	return __mkfile(db, path, linkname, strlen(linkname), &st, 0);
 }
 
 static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
@@ -1215,20 +1215,20 @@ static int __mksuper(sqlite3 *db, const char *label, const char *uuid)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	ret = add_file(db, "/.super/version", "0", strlen("0") + 1, &st,
+	ret = __mkfile(db, "/.super/version", "0", strlen("0") + 1, &st,
 		       FS_IMMUTABLE_FL);
 	if (ret)
 		goto exit;
 
 	if (label) {
-		ret = add_file(db, "/.super/label", label, strlen(label) + 1,
+		ret = __mkfile(db, "/.super/label", label, strlen(label) + 1,
 			       &st, FS_IMMUTABLE_FL);
 		if (ret)
 			goto exit;
 	}
 
 	if (uuid) {
-		ret = add_file(db, "/.super/uuid", uuid, strlen(uuid) + 1,
+		ret = __mkfile(db, "/.super/uuid", uuid, strlen(uuid) + 1,
 			       &st, FS_IMMUTABLE_FL);
 		if (ret)
 			goto exit;
