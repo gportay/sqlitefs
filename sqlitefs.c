@@ -65,11 +65,12 @@ static int DEBUG = 0;
 })
 
 #define __strncmp(s1, s2) strncmp(s1, s2, sizeof(s2) - 1)
+#define __snprintf(s, fmt, ...) snprintf(s, sizeof(s), fmt, ##__VA_ARGS__)
 
 static inline int __strtoi(const char *nptr, char **endptr, int base)
 {
 	long l;
-	
+
 	errno = 0;
 	l = strtol(nptr, endptr, base);
 	if (endptr && *endptr)
@@ -299,7 +300,8 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 			  "-");
 }
 
-static int fprintgetfattr(FILE *f, const char *path, const char *name, const char *value)
+static int fprintgetfattr(FILE *f, const char *path, const char *name,
+			  const char *value)
 {
 	return fprintf(f, "# file: %s\n%s=\"%s\"\n", path, name, value);
 }
@@ -377,7 +379,8 @@ static int listxattr_cb(void *data, int argc, char **argv, char **colname)
 
 	len = strlen(argv[0]) + 1;
 	if (pdata->list) {
-		strncpy(pdata->list + pdata->len, argv[0], pdata->size - pdata->len);
+		strncpy(pdata->list + pdata->len, argv[0],
+			pdata->size - pdata->len);
 		if (pdata->size < pdata->len + len) {
 			pdata->error = ERANGE;
 			len = pdata->size - pdata->len;
@@ -422,7 +425,7 @@ struct readdir_data {
 static int readdir_cb(void *data, int argc, char **argv, char **colname)
 {
 	struct readdir_data *pdata = (struct readdir_data *)data;
-	(void)argc;	
+	(void)argc;
 	(void)colname;
 
 	if (strcmp(pdata->parent, argv[0]) != 0) {
@@ -462,10 +465,10 @@ static int __readdir(sqlite3 *db, const char *path, void *buffer,
 	}
 	data.count += 2;
 
-	snprintf(sql, sizeof(sql), "SELECT path "
-				   "FROM files "
-				   "WHERE parent = \"%s\";",
-		 path);
+	__snprintf(sql, "SELECT path "
+			"FROM files "
+			"WHERE parent = \"%s\";",
+			path);
 	ret = sqlite3_exec(db, sql, readdir_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -483,7 +486,7 @@ struct orphan_data {
 static int orphan_cb(void *data, int argc, char **argv, char **colname)
 {
 	struct orphan_data *pdata = (struct orphan_data *)data;
-	(void)argc;	
+	(void)argc;
 	(void)colname;
 
 	fprintf(stderr, "%s\n", argv[0]);
@@ -523,11 +526,11 @@ static int lost_found(sqlite3 *db)
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "SELECT path "
-				   "FROM files "
-				   "WHERE parent NOT IN ("
-				  	"SELECT path FROM files"
-				   ");");
+	__snprintf(sql, "SELECT path "
+			"FROM files "
+			"WHERE parent NOT IN ("
+				"SELECT path FROM files"
+			");");
 	ret = sqlite3_exec(db, sql, orphan_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -550,18 +553,19 @@ static int add_file(sqlite3 *db, const char *path, const void *data,
 	strncpy(parent, path, sizeof(parent));
 	dirname(parent);
 
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
-		 "data, flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
-		 "st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
-		 "st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
-		 "st_ctim_nsec) "
-		 "VALUES(\"%s\", \"%s\", ?, %i, %lu, %u, %lu, %u, %u, %lu, "
-		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, flags, st->st_dev, st->st_mode,
-		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, datasize,
-		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
-		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
-		 st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
+	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, data, "
+			"flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
+			"st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
+			"st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
+			"st_ctim_nsec) "
+			"VALUES(\"%s\", \"%s\", ?, %i, %lu, %u, %lu, %u, %u, "
+			"%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
+			path, parent, flags, st->st_dev, st->st_mode,
+			st->st_nlink, st->st_uid, st->st_gid, st->st_rdev,
+			datasize, st->st_blksize, st->st_blocks,
+			st->st_atim.tv_sec, st->st_atim.tv_nsec,
+			st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
+			st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
 
 	for (;;) {
 		sqlite3_stmt *stmt;
@@ -626,18 +630,20 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
-		 "linkname, flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
-		 "st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
-		 "st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
-		 "st_ctim_nsec) "
-		 "VALUES(\"%s\", \"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, "
-		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, linkname, flags, st.st_dev, st.st_mode,
-		 st.st_nlink, st.st_uid, st.st_gid, st.st_rdev, st.st_size,
-		 st.st_blksize, st.st_blocks, st.st_atim.tv_sec,
-		 st.st_atim.tv_nsec, st.st_mtim.tv_sec, st.st_mtim.tv_nsec,
-		 st.st_ctim.tv_sec, st.st_ctim.tv_nsec);
+	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, linkname, "
+			"flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
+			"st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
+			"st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
+			"st_ctim_nsec) "
+			"VALUES(\"%s\", \"%s\", \"%s\", %i, %lu, %u, %lu, %u, "
+			"%u, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, "
+			"%lu);",
+			path, parent, linkname, flags, st.st_dev, st.st_mode,
+			st.st_nlink, st.st_uid, st.st_gid, st.st_rdev,
+			st.st_size, st.st_blksize, st.st_blocks,
+			st.st_atim.tv_sec, st.st_atim.tv_nsec,
+			st.st_mtim.tv_sec, st.st_mtim.tv_nsec,
+			st.st_ctim.tv_sec, st.st_ctim.tv_nsec);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -659,17 +665,19 @@ static int add_directory(sqlite3 *db, const char *path, const struct stat *st,
 	strncpy(parent, path, sizeof(parent));
 	dirname(parent);
 
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO files(path, parent, "
-		 "flags, st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
-		 "st_size, st_blksize, st_blocks, st_atim_sec, st_atim_nsec, "
-		 "st_mtim_sec, st_mtim_nsec, st_ctim_sec, st_ctim_nsec) "
-		 "VALUES(\"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, %lu, %lu, "
-		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, flags, st->st_dev, st->st_mode, st->st_nlink,
-		 st->st_uid, st->st_gid, st->st_rdev, st->st_size,
-		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
-		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
-		 st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
+	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, flags, "
+			"st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
+			"st_size, st_blksize, st_blocks, st_atim_sec, "
+			"st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
+			"st_ctim_nsec) "
+			"VALUES(\"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, %lu, "
+			"%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
+			path, parent, flags, st->st_dev, st->st_mode,
+			st->st_nlink, st->st_uid, st->st_gid, st->st_rdev,
+			st->st_size, st->st_blksize, st->st_blocks,
+			st->st_atim.tv_sec, st->st_atim.tv_nsec,
+			st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
+			st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -692,26 +700,26 @@ static int __stat(sqlite3 *db, const char *path, struct stat *st)
 	if (!db || !st)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "SELECT "
-					"path, "
-					"st_dev, "
-					"rowid, "
-					"st_mode, "
-					"st_nlink, "
-					"st_uid, "
-					"st_gid, "
-					"st_rdev, "
-					"st_size, "
-					"st_blksize, "
-					"st_blocks, "
-					"st_atim_sec, "
-					"st_atim_nsec, "
-					"st_mtim_sec, "
-					"st_mtim_nsec, "
-					"st_ctim_sec, "
-					"st_ctim_nsec "
-				   "FROM files WHERE path = \"%s\";",
-		 path);
+	__snprintf(sql, "SELECT "
+				"path, "
+				"st_dev, "
+				"rowid, "
+				"st_mode, "
+				"st_nlink, "
+				"st_uid, "
+				"st_gid, "
+				"st_rdev, "
+				"st_size, "
+				"st_blksize, "
+				"st_blocks, "
+				"st_atim_sec, "
+				"st_atim_nsec, "
+				"st_mtim_sec, "
+				"st_mtim_nsec, "
+				"st_ctim_sec, "
+				"st_ctim_nsec "
+			"FROM files WHERE path = \"%s\";",
+			path);
 	ret = sqlite3_exec(db, sql, getattr_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -736,10 +744,10 @@ static int __chmod(sqlite3 *db, const char *path, mode_t mode)
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_mode=%u "
-				   "WHERE path=\"%s\";",
-		 mode, path);
+	__snprintf(sql, "UPDATE files SET "
+				"st_mode=%u "
+			"WHERE path=\"%s\";",
+			mode, path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -757,11 +765,11 @@ static int __chown(sqlite3 *db, const char *path, uid_t uid, gid_t gid)
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_uid=%u, "
-					"st_gid=%u "
-				   "WHERE path=\"%s\";",
-		 uid, gid, path);
+	__snprintf(sql, "UPDATE files SET "
+				"st_uid=%u, "
+				"st_gid=%u "
+			"WHERE path=\"%s\";",
+			uid, gid, path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -801,26 +809,26 @@ static int __utimens(sqlite3 *db, const char *path, const struct timespec tv[2])
 	}
 
 	if (tv[0].tv_nsec != UTIME_OMIT && tv[1].tv_nsec != UTIME_OMIT)
-		snprintf(sql, sizeof(sql), "UPDATE files SET "
-						"st_atim_sec=%lu, "
-						"st_atim_nsec=%lu, "
-						"st_mtim_sec=%lu, "
-						"st_mtim_nsec=%lu "
-					   "WHERE path=\"%s\";",
-			 atime.tv_sec, atime.tv_nsec,
-			 mtime.tv_sec, mtime.tv_nsec,
-			 path);
+		__snprintf(sql, "UPDATE files SET "
+					"st_atim_sec=%lu, "
+					"st_atim_nsec=%lu, "
+					"st_mtim_sec=%lu, "
+					"st_mtim_nsec=%lu "
+				"WHERE path=\"%s\";",
+				atime.tv_sec, atime.tv_nsec,
+				mtime.tv_sec, mtime.tv_nsec,
+				path);
 	else if (tv[0].tv_nsec != UTIME_OMIT)
-		snprintf(sql, sizeof(sql), "UPDATE files SET "
-						"st_atim_sec=%lu, "
-						"st_atim_nsec=%lu, "
-					   "WHERE path=\"%s\";",
-			 atime.tv_sec, atime.tv_nsec, path);
+		__snprintf(sql, "UPDATE files SET "
+					"st_atim_sec=%lu, "
+					"st_atim_nsec=%lu, "
+				"WHERE path=\"%s\";",
+				atime.tv_sec, atime.tv_nsec, path);
 	else if (tv[1].tv_nsec != UTIME_OMIT)
-		snprintf(sql, sizeof(sql), "UPDATE files SET "
-						"st_mtim_sec=%lu, "
-						"st_mtim_nsec=%lu "
-					   "WHERE path=\"%s\";",
+		__snprintf(sql, "UPDATE files SET "
+					"st_mtim_sec=%lu, "
+					"st_mtim_nsec=%lu "
+				"WHERE path=\"%s\";",
 			 mtime.tv_sec, mtime.tv_nsec, path);
 	else
 		return 0;
@@ -843,10 +851,10 @@ static ssize_t __pread(sqlite3 *db, const char *path, char *buf,
 	if (!db || !buf)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "SELECT data "
-				   "FROM files "
-				   "WHERE (path == \"%s\");",
-		 path);
+	__snprintf(sql, "SELECT data "
+			"FROM files "
+			"WHERE (path == \"%s\");",
+			path);
 
 	for (;;) {
 		const unsigned char *data;
@@ -984,11 +992,11 @@ static int __truncate(sqlite3 *db, const char *path, off_t size)
 		goto exit;
 
 	ret = -EIO;
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"st_size=%lu, "
-					"data=? "
-				   "WHERE path=\"%s\";",
-		 st.st_size, path);
+	__snprintf(sql, "UPDATE files SET "
+				"st_size=%lu, "
+				"data=? "
+			"WHERE path=\"%s\";",
+			st.st_size, path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1065,20 +1073,20 @@ static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
 	if (!db || !oldpath || !newpath)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE files SET "
-					"path=\"%s\" "
-				   "WHERE path=\"%s\";",
-		 newpath, oldpath);
+	__snprintf(sql, "UPDATE OR REPLACE files SET "
+				"path=\"%s\" "
+			"WHERE path=\"%s\";",
+			newpath, oldpath);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
 		return -EIO;
 	}
 
-	snprintf(sql, sizeof(sql), "UPDATE OR REPLACE xattrs SET "
-					"path=\"%s\" "
-				   "WHERE path=\"%s\";",
-		 newpath, oldpath);
+	__snprintf(sql, "UPDATE OR REPLACE xattrs SET "
+				"path=\"%s\" "
+			"WHERE path=\"%s\";",
+			newpath, oldpath);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1096,18 +1104,18 @@ static int __unlink(sqlite3 *db, const char *path)
 	if (!db || !path)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "DELETE FROM files "
-				   "WHERE path=\"%s\";",
-		 path);
+	__snprintf(sql, "DELETE FROM files "
+			"WHERE path=\"%s\";",
+			path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
 		return -EIO;
 	}
 
-	snprintf(sql, sizeof(sql), "DELETE FROM xattrs "
-				   "WHERE path=\"%s\";",
-		 path);
+	__snprintf(sql, "DELETE FROM xattrs "
+			"WHERE path=\"%s\";",
+			path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1136,11 +1144,11 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 	if (!db || !path || !buf)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "SELECT "
-					"path, "
-					"linkname "
-				   "FROM files WHERE path = \"%s\";",
-		 path);
+	__snprintf(sql, "SELECT "
+				"path, "
+				"linkname "
+			"FROM files WHERE path = \"%s\";",
+			path);
 	ret = sqlite3_exec(db, sql, readlink_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -1292,9 +1300,9 @@ static int __getxattr(sqlite3 *db, const char *path, const char *name,
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "SELECT value "
-				   "FROM xattrs WHERE path = \"%s\" AND name = \"%s\";",
-		 path, name);
+	__snprintf(sql, "SELECT value "
+			"FROM xattrs WHERE path = \"%s\" AND name = \"%s\";",
+			path, name);
 	ret = sqlite3_exec(db, sql, getxattr_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -1328,14 +1336,14 @@ static int __setxattr(sqlite3 *db, const char *path, const char *name,
 			return exists;
 
 		if (flags == XATTR_CREATE && exists)
-			return -EEXIST;	
+			return -EEXIST;
 		else if (flags == XATTR_REPLACE && !exists)
-		       return -ENODATA;	
+		       return -ENODATA;
 	}
 
-	snprintf(sql, sizeof(sql), "INSERT OR REPLACE INTO xattrs(path, name, value)"
-		                   "VALUES(\"%s\", \"%s\", \"%s\");",
-	        	           path, name, value);
+	__snprintf(sql, "INSERT OR REPLACE INTO xattrs(path, name, value) "
+			"VALUES(\"%s\", \"%s\", \"%s\");",
+			path, name, value);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1351,7 +1359,7 @@ static int __setxattr(sqlite3 *db, const char *path, const char *name,
 static int __listxattr(sqlite3 *db, const char *path, char *list, size_t size)
 {
 	struct listxattr_data data = {
-		.error = 0, 
+		.error = 0,
 		.list = list,
 		.size = size,
 		.len = 0,
@@ -1363,9 +1371,9 @@ static int __listxattr(sqlite3 *db, const char *path, char *list, size_t size)
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "SELECT name "
-				   "FROM xattrs WHERE path = \"%s\";",
-		 path);
+	__snprintf(sql, "SELECT name "
+			"FROM xattrs WHERE path = \"%s\";",
+			path);
 	ret = sqlite3_exec(db, sql, listxattr_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -1392,9 +1400,9 @@ static int __removexattr(sqlite3 *db, const char *path, const char *name)
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "DELETE FROM xattrs "
-				   "WHERE path=\"%s\" AND name=\"%s\";",
-				   path, name);
+	__snprintf(sql, "DELETE FROM xattrs "
+			"WHERE path=\"%s\" AND name=\"%s\";",
+			path, name);
 	ret = sqlite3_exec(db, sql, NULL, NULL, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -1472,7 +1480,7 @@ static int __setversion(sqlite3 *db, const char *path, int version)
 static int __getflags(sqlite3 *db, const char *path, int *flags)
 {
 	struct getflags_data data = {
-		.error = ENOENT, 
+		.error = ENOENT,
 		.flags = 0,
 	};
 	char sql[BUFSIZ];
@@ -1482,9 +1490,9 @@ static int __getflags(sqlite3 *db, const char *path, int *flags)
 	if (!db || !flags)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "SELECT path, flags "
-				   "FROM files WHERE path = \"%s\";",
-		                   path);
+	__snprintf(sql, "SELECT path, flags "
+			"FROM files WHERE path = \"%s\";",
+		        path);
 	ret = sqlite3_exec(db, sql, getflags_cb, &data, &e);
 	if (ret != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
@@ -1511,10 +1519,10 @@ static int __setflags(sqlite3 *db, const char *path, int flags)
 	if (!db)
 		return -EINVAL;
 
-	snprintf(sql, sizeof(sql), "UPDATE files SET "
-					"flags=%i "
-				   "WHERE path=\"%s\";",
-	        	           flags, path);
+	__snprintf(sql, "UPDATE files SET "
+				"flags=%i "
+			"WHERE path=\"%s\";",
+			flags, path);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1569,8 +1577,7 @@ static int mkfs(const char *path, const char *label)
 		goto error;
 	}
 
-	snprintf(sql, sizeof(sql),
-		 "CREATE TABLE IF NOT EXISTS files("
+	__snprintf(sql, "CREATE TABLE IF NOT EXISTS files("
 				"path TEXT NOT NULL PRIMARY KEY, "
 				"parent TEXT NOT NULL, "
 				"linkname TEXT, "
@@ -1597,8 +1604,7 @@ static int mkfs(const char *path, const char *label)
 		goto error;
 	}
 
-	snprintf(sql, sizeof(sql),
-		 "CREATE TABLE IF NOT EXISTS xattrs("
+	__snprintf(sql, "CREATE TABLE IF NOT EXISTS xattrs("
 				"path TEXT NOT NULL, "
 				"name TEXT NOT NULL, "
 				"value TEXT NOT NULL, "
@@ -1876,7 +1882,7 @@ static int sqlitefs_truncate(const char *path, off_t size,
  *  - When writeback caching is disabled, the filesystem is
  *    expected to properly handle the O_APPEND flag and ensure
  *    that each write is appending to the end of the file.
- * 
+ *
  *  - When writeback caching is enabled, the kernel will
  *    handle O_APPEND. However, unless all changes to the file
  *    come through the kernel this will not work reliably. The
@@ -1959,9 +1965,9 @@ static int sqlitefs_write(const char *path, const char *buf, size_t bufsize,
  *
  * Flush is called on each close() of a file descriptor, as opposed to
  * release which is called on the close of the last file descriptor for
- * a file.  Under Linux, errors returned by flush() will be passed to 
+ * a file.  Under Linux, errors returned by flush() will be passed to
  * userspace as errors from close(), so flush() is a good place to write
- * back any cached dirty data. However, many applications ignore errors 
+ * back any cached dirty data. However, many applications ignore errors
  * on close(), and on non-Linux systems, close() may succeed even if flush()
  * returns an error. For these reasons, filesystems should not assume
  * that errors returned by flush will ever be noticed or even
