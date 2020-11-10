@@ -91,27 +91,6 @@ else
 	done
 fi
 
-run "Echo label"
-if echo -n "test" >mountpoint/.super/label &&
-   cat mountpoint/.super/label | tee /dev/stderr | md5sum | \
-   grep -q '^098f6bcd4621d373cade4e832627b4f6  -$'
-then
-	ok
-else
-	ko
-fi
-echo
-
-run "Get filesystem label"
-if sqlitefs-ioctl getfslabel mountpoint | tee /dev/stderr | \
-   grep -q 'test'
-then
-	ok
-else
-	ko
-fi
-echo
-
 run "Set filesystem label"
 if sqlitefs-ioctl setfslabel mountpoint "fs"
 then

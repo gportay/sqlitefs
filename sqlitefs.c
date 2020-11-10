@@ -105,6 +105,7 @@ static inline int __strtoi(const char *nptr, char **endptr, int base)
 #define MODSIZ 11
 #define USRSIZ 128
 #define GRPSIZ 64
+#define FLGSIZ 21
 
 #ifndef ACCESSPERMS
 # define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO)
@@ -138,6 +139,8 @@ static ssize_t __pread(sqlite3 *db, const char *path, char *buf,
 		       size_t bufsize, off_t offset);
 static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
 			size_t bufsize, off_t offset);
+static ssize_t __pwrite_mutable(sqlite3 *db, const char *path, const char *buf,
+				size_t bufsize, off_t offset);
 static int __truncate(sqlite3 *db, const char *path, off_t size);
 static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev);
 static int __rename(sqlite3 *db, const char *oldpath, const char *newpath);
@@ -161,6 +164,7 @@ static int __getversion(sqlite3 *db, const char *path, int *version);
 static int __setversion(sqlite3 *db, const char *path, int version);
 static int __getflags(sqlite3 *db, const char *path, int *flags);
 static int __setflags(sqlite3 *db, const char *path, int flags);
+static int __isimmutable(sqlite3 *db, const char *path);
 static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
 		   unsigned int flags, void *data);
 
@@ -272,6 +276,16 @@ static const char *timespec_r(const struct timespec *ts, char *buf,
 	return buf;
 }
 
+static const char *flags_r(int flags, char *buf, size_t bufsize)
+{
+	char *s = buf;
+	snprintf(buf, bufsize, "%s", "--------------------");
+
+	s[4] = flags & FS_IMMUTABLE_FL ? 'i' : '-';
+
+	return buf;
+}
+
 static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 {
 	char atimbuf[TIMSIZ];
@@ -298,6 +312,14 @@ static int fprintstat(FILE *f, const char *path, const struct stat *buf)
 			  timespec_r(&buf->st_mtim, mtimbuf, sizeof(mtimbuf)),
 			  timespec_r(&buf->st_ctim, ctimbuf, sizeof(ctimbuf)),
 			  "-");
+}
+
+static int fprintlsattr(FILE *f, const char *path, int flags)
+{
+	char flagsbuf[FLGSIZ];
+
+	return fprintf(f, "%s %s\n", flags_r(flags, flagsbuf, sizeof(flagsbuf)),
+			  path);
 }
 
 static int fprintgetfattr(FILE *f, const char *path, const char *name,
@@ -907,6 +929,18 @@ exit:
 static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
 			size_t bufsize, off_t offset)
 {
+	if (!db || !buf)
+		return -EINVAL;
+
+	if (__isimmutable(db, path))
+		return -EPERM;
+
+	return __pwrite_mutable(db, path, buf, bufsize, offset);
+}
+
+static ssize_t __pwrite_mutable(sqlite3 *db, const char *path, const char *buf,
+				size_t bufsize, off_t offset)
+{
 	ssize_t datasize = 0;
 	void *data = NULL;
 	struct stat st;
@@ -981,6 +1015,9 @@ static int __truncate(sqlite3 *db, const char *path, off_t size)
 
 	if (!db || !path)
 		return -EINVAL;
+
+	if (__isimmutable(db, path))
+		return -EPERM;
 
 	ret = __stat(db, path, &st);
 	if (ret)
@@ -1103,6 +1140,9 @@ static int __unlink(sqlite3 *db, const char *path)
 
 	if (!db || !path)
 		return -EINVAL;
+
+	if (__isimmutable(db, path))
+		return -EPERM;
 
 	__snprintf(sql, "DELETE FROM files "
 			"WHERE path=\"%s\";",
@@ -1263,20 +1303,21 @@ static int __mksuper(sqlite3 *db, const char *label, const char *uuid)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	ret = add_file(db, "/.super/version", "0", strlen("0") + 1, &st, 0);
+	ret = add_file(db, "/.super/version", "0", strlen("0") + 1, &st,
+		       FS_IMMUTABLE_FL);
 	if (ret)
 		goto exit;
 
 	if (label) {
 		ret = add_file(db, "/.super/label", label, strlen(label) + 1,
-			       &st, 0);
+			       &st, FS_IMMUTABLE_FL);
 		if (ret)
 			goto exit;
 	}
 
 	if (uuid) {
 		ret = add_file(db, "/.super/uuid", uuid, strlen(uuid) + 1,
-			       &st, 0);
+			       &st, FS_IMMUTABLE_FL);
 		if (ret)
 			goto exit;
 	}
@@ -1431,7 +1472,8 @@ static int __setfslabel(sqlite3 *db, const char *path, const char *label)
 	int ret;
 	(void)path;
 
-	ret = __pwrite(db, "/.super/label", label, strlen(label) + 1, 0);
+	ret = __pwrite_mutable(db, "/.super/label", label, strlen(label) + 1,
+			       0);
 	if (ret < 0)
 		return ret;
 
@@ -1470,7 +1512,7 @@ static int __setversion(sqlite3 *db, const char *path, int version)
 
 	snprintf(buf, sizeof(buf), "%i", version);
 
-	ret = __pwrite(db, "/.super/version", buf, strlen(buf) + 1, 0);
+	ret = __pwrite_mutable(db, "/.super/version", buf, strlen(buf) + 1, 0);
 	if (ret < 0)
 		return ret;
 
@@ -1503,10 +1545,10 @@ static int __getflags(sqlite3 *db, const char *path, int *flags)
 	if (data.error)
 		return -data.error;
 
-	if (VERBOSE)
-		fprintf(stderr, "%i\n", data.flags);
-
 	*flags = data.flags;
+
+	if (VERBOSE)
+		fprintlsattr(stderr, path, *flags);
 
 	return 0;
 }
@@ -1519,6 +1561,9 @@ static int __setflags(sqlite3 *db, const char *path, int flags)
 	if (!db)
 		return -EINVAL;
 
+	if (flags & ~FS_IMMUTABLE_FL)
+		return -ENOTSUP;
+
 	__snprintf(sql, "UPDATE files SET "
 				"flags=%i "
 			"WHERE path=\"%s\";",
@@ -1530,6 +1575,16 @@ static int __setflags(sqlite3 *db, const char *path, int flags)
 	}
 
 	return 0;
+}
+
+static int __isimmutable(sqlite3 *db, const char *path)
+{
+	int flags;
+
+	if (__getflags(db, path, &flags))
+		return 0;
+
+	return flags & FS_IMMUTABLE_FL; 
 }
 
 static int __ioctl(sqlite3 *db, const char *path, unsigned int cmd, void *arg,
