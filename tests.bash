@@ -150,6 +150,51 @@ else
 fi
 echo
 
+run "List attributes"
+if lsattr mountpoint/.super/version | tee /dev/stderr | \
+   grep -q '^-------------------- mountpoint/.super/version$'
+then
+	ok
+else
+	ko
+fi
+
+run "Change attribute"
+if chattr +i mountpoint/.super/version
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "List attributes"
+if lsattr mountpoint/.super/version | tee /dev/stderr | \
+   grep -q '^----i--------------- mountpoint/.super/version$'
+then
+	ok
+else
+	ko
+fi
+
+run "Reset attribute"
+if chattr -i mountpoint/.super/version
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "List attributes"
+if lsattr mountpoint/.super/version | tee /dev/stderr | \
+   grep -q '^-------------------- mountpoint/.super/version$'
+then
+	ok
+else
+	ko
+fi
+
 run "List directory content"
 if ls -1a mountpoint | tee /dev/stderr | \
    grep '.lost+found'
