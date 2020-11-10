@@ -114,7 +114,6 @@ static inline int __strtoi(const char *nptr, char **endptr, int base)
 static int getattr_cb(void *data, int argc, char **argv, char **colname);
 static int getxattr_cb(void *data, int argc, char **argv, char **colname);
 static int listxattr_cb(void *data, int argc, char **argv, char **colname);
-static int readlink_cb(void *data, int argc, char **argv, char **colname);
 static int readdir_cb(void *data, int argc, char **argv, char **colname);
 static int __readdir(sqlite3 *db, const char *path, void *buffer,
 		     fuse_fill_dir_t filler, off_t offset,
@@ -125,8 +124,6 @@ static int getflags_cb(void *data, int argc, char **argv, char **colname);
 static int lost_found(sqlite3 *db);
 static int add_file(sqlite3 *db, const char *path, const void *data,
 		    size_t datasize, const struct stat *st, int flags);
-static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
-		       int flags);
 static int add_directory(sqlite3 *db, const char *path, const struct stat *st,
 			 int flags);
 static int __stat(sqlite3 *db, const char *path, struct stat *st);
@@ -413,30 +410,6 @@ static int listxattr_cb(void *data, int argc, char **argv, char **colname)
 	return SQLITE_OK;
 }
 
-struct readlink_data {
-	int error;
-	char *buf;
-	size_t len;
-};
-
-static int readlink_cb(void *data, int argc, char **argv, char **colname)
-{
-	struct readlink_data *pdata = (struct readlink_data *)data;
-	size_t len;
-	int i;
-	(void)argc;
-	(void)colname;
-
-	i = 1;
-	len = strlen(argv[i]);
-	pdata->error = len >= pdata->len ? ENAMETOOLONG : 0;
-	if (pdata->buf)
-		strncpy(pdata->buf, argv[i++], pdata->len);
-	pdata->len = len;
-
-	return SQLITE_OK;
-}
-
 struct readdir_data {
 	const char *parent;
 	void *buffer;
@@ -618,61 +591,6 @@ static int add_file(sqlite3 *db, const char *path, const void *data,
 
 exit:
 	return ret;
-}
-
-static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
-		       int flags)
-{
-	char sql[BUFSIZ], parent[PATH_MAX];
-	struct timespec now;
-	struct stat st;
-	char *e;
-
-	if (!db || !linkname || !path)
-		return -EINVAL;
-
-	if (clock_gettime(CLOCK_REALTIME, &now)) {
-		perror("clock_gettime");
-		return -errno;
-	}
-
-	strncpy(parent, path, sizeof(parent));
-	dirname(parent);
-
-	memset(&st, 0, sizeof(struct stat));
-	/* Ignored st.st_dev = 0; */
-	/* Ignored st.st_ino = 0; */
-	st.st_mode = S_IFLNK | ACCESSPERMS;
-	st.st_nlink = 1;
-	st.st_uid = getuid();
-	st.st_gid = getgid();
-	st.st_size = strlen(linkname);
-	/* Ignored st.st_blksize = 0; */
-	st.st_atim = now;
-	st.st_mtim = now;
-	st.st_ctim = now;
-
-	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, linkname, "
-			"flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
-			"st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
-			"st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
-			"st_ctim_nsec) "
-			"VALUES(\"%s\", \"%s\", \"%s\", %i, %lu, %u, %lu, %u, "
-			"%u, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, "
-			"%lu);",
-			path, parent, linkname, flags, st.st_dev, st.st_mode,
-			st.st_nlink, st.st_uid, st.st_gid, st.st_rdev,
-			st.st_size, st.st_blksize, st.st_blocks,
-			st.st_atim.tv_sec, st.st_atim.tv_nsec,
-			st.st_mtim.tv_sec, st.st_mtim.tv_nsec,
-			st.st_ctim.tv_sec, st.st_ctim.tv_nsec);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	return 0;
 }
 
 static int add_directory(sqlite3 *db, const char *path, const struct stat *st,
@@ -1167,37 +1085,43 @@ static int __unlink(sqlite3 *db, const char *path)
 
 static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 {
-	return add_symlink(db, linkname, path, 0);
+	struct timespec now;
+	struct stat st;
+
+	if (!db || !linkname || !path)
+		return -EINVAL;
+
+	if (clock_gettime(CLOCK_REALTIME, &now)) {
+		perror("clock_gettime");
+		return -errno;
+	}
+
+	memset(&st, 0, sizeof(struct stat));
+	/* Ignored st.st_dev = 0; */
+	/* Ignored st.st_ino = 0; */
+	st.st_mode = S_IFLNK | ACCESSPERMS;
+	st.st_nlink = 1;
+	st.st_uid = getuid();
+	st.st_gid = getgid();
+	/* Ignored st.st_blksize = 0; */
+	st.st_atim = now;
+	st.st_mtim = now;
+	st.st_ctim = now;
+
+	return add_file(db, path, linkname, strlen(linkname), &st, 0);
 }
 
 static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 {
-	struct readlink_data data = {
-		.error = ENOENT,
-		.buf = buf,
-		.len = len,
-	};
-	char sql[BUFSIZ];
-	char *e;
 	int ret;
 
-	if (!db || !path || !buf)
-		return -EINVAL;
+	ret = __pread(db, path, buf, len, 0);
+	if (ret < 0)
+		return ret;
+	else if ((size_t)ret == len && buf[ret])
+		return ENAMETOOLONG;
 
-	__snprintf(sql, "SELECT "
-				"path, "
-				"linkname "
-			"FROM files WHERE path = \"%s\";",
-			path);
-	ret = sqlite3_exec(db, sql, readlink_cb, &data, &e);
-	if (ret != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	if (data.error)
-		return -data.error;
+	buf[ret] = 0;
 
 	if (VERBOSE)
 		fprintf(stderr, "%s\n", buf);
@@ -1635,7 +1559,6 @@ static int mkfs(const char *path, const char *label)
 	__snprintf(sql, "CREATE TABLE IF NOT EXISTS files("
 				"path TEXT NOT NULL PRIMARY KEY, "
 				"parent TEXT NOT NULL, "
-				"linkname TEXT, "
 				"data BLOB, "
 				"flags INT(8), "
 				"st_dev INT(8), "
