@@ -122,9 +122,11 @@ static int orphan_cb(void *data, int argc, char **argv, char **colname);
 static int getflags_cb(void *data, int argc, char **argv, char **colname);
 static int lost_found(sqlite3 *db);
 static int add_file(sqlite3 *db, const char *path, const void *data,
-		    size_t datasize, const struct stat *st);
-static int add_symlink(sqlite3 *db, const char *linkname, const char *path);
-static int add_directory(sqlite3 *db, const char *path, const struct stat *st);
+		    size_t datasize, const struct stat *st, int flags);
+static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
+		       int flags);
+static int add_directory(sqlite3 *db, const char *path, const struct stat *st,
+			 int flags);
 static int __stat(sqlite3 *db, const char *path, struct stat *st);
 
 static int __chmod(sqlite3 *db, const char *path, mode_t mode);
@@ -537,7 +539,7 @@ static int lost_found(sqlite3 *db)
 }
 
 static int add_file(sqlite3 *db, const char *path, const void *data,
-		    size_t datasize, const struct stat *st)
+		    size_t datasize, const struct stat *st, int flags)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
 	int ret = -EIO;
@@ -555,7 +557,7 @@ static int add_file(sqlite3 *db, const char *path, const void *data,
 		 "st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", ?, %i, %lu, %u, %lu, %u, %u, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, 0, st->st_dev, st->st_mode,
+		 path, parent, flags, st->st_dev, st->st_mode,
 		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, datasize,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
@@ -592,7 +594,8 @@ exit:
 	return ret;
 }
 
-static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
+static int add_symlink(sqlite3 *db, const char *linkname, const char *path,
+		       int flags)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
 	struct timespec now;
@@ -630,11 +633,11 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 		 "st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, linkname, 0, st.st_dev, st.st_mode, st.st_nlink,
-		 st.st_uid, st.st_gid, st.st_rdev, st.st_size, st.st_blksize,
-		 st.st_blocks, st.st_atim.tv_sec, st.st_atim.tv_nsec,
-		 st.st_mtim.tv_sec, st.st_mtim.tv_nsec, st.st_ctim.tv_sec,
-		 st.st_ctim.tv_nsec);
+		 path, parent, linkname, flags, st.st_dev, st.st_mode,
+		 st.st_nlink, st.st_uid, st.st_gid, st.st_rdev, st.st_size,
+		 st.st_blksize, st.st_blocks, st.st_atim.tv_sec,
+		 st.st_atim.tv_nsec, st.st_mtim.tv_sec, st.st_mtim.tv_nsec,
+		 st.st_ctim.tv_sec, st.st_ctim.tv_nsec);
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -644,7 +647,8 @@ static int add_symlink(sqlite3 *db, const char *linkname, const char *path)
 	return 0;
 }
 
-static int add_directory(sqlite3 *db, const char *path, const struct stat *st)
+static int add_directory(sqlite3 *db, const char *path, const struct stat *st,
+			 int flags)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
 	char *e;
@@ -661,8 +665,8 @@ static int add_directory(sqlite3 *db, const char *path, const struct stat *st)
 		 "st_mtim_sec, st_mtim_nsec, st_ctim_sec, st_ctim_nsec) "
 		 "VALUES(\"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, %lu, %lu, "
 		 "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-		 path, parent, 0, st->st_dev, st->st_mode,
-		 st->st_nlink, st->st_uid, st->st_gid, st->st_rdev, st->st_size,
+		 path, parent, flags, st->st_dev, st->st_mode, st->st_nlink,
+		 st->st_uid, st->st_gid, st->st_rdev, st->st_size,
 		 st->st_blksize, st->st_blocks, st->st_atim.tv_sec,
 		 st->st_atim.tv_nsec, st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
 		 st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
@@ -898,10 +902,14 @@ static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
 	ssize_t datasize = 0;
 	void *data = NULL;
 	struct stat st;
-	int ret;
+	int ret, flags;
 
 	if (!db || !buf)
 		return -EINVAL;
+
+	ret = __getflags(db, path, &flags);
+	if (ret)
+		return ret;
 
 	ret = __stat(db, path, &st);
 	if (ret)
@@ -932,14 +940,14 @@ static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
 
 		memcpy(data + offset, buf, bufsize);
 
-		ret = add_file(db, path, data, datasize, &st);
+		ret = add_file(db, path, data, datasize, &st, flags);
 		if (ret)
 			goto exit;
 
 		goto exit;
 	}
 
-	ret = add_file(db, path, buf, bufsize, &st);
+	ret = add_file(db, path, buf, bufsize, &st, flags);
 	if (ret)
 		return ret;
 
@@ -1046,7 +1054,7 @@ static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return add_file(db, path, NULL, 0, &st);
+	return add_file(db, path, NULL, 0, &st, 0);
 }
 
 static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
@@ -1111,7 +1119,7 @@ static int __unlink(sqlite3 *db, const char *path)
 
 static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 {
-	return add_symlink(db, linkname, path);
+	return add_symlink(db, linkname, path, 0);
 }
 
 static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
@@ -1174,7 +1182,7 @@ static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return add_directory(db, path, &st);
+	return add_directory(db, path, &st, 0);
 }
 
 static int __rmdir(sqlite3 *db, const char *path)
@@ -1247,18 +1255,20 @@ static int __mksuper(sqlite3 *db, const char *label, const char *uuid)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	ret = add_file(db, "/.super/version", "0", strlen("0") + 1, &st);
+	ret = add_file(db, "/.super/version", "0", strlen("0") + 1, &st, 0);
 	if (ret)
 		goto exit;
 
 	if (label) {
-		ret = add_file(db, "/.super/label", label, strlen(label) + 1, &st);
+		ret = add_file(db, "/.super/label", label, strlen(label) + 1,
+			       &st, 0);
 		if (ret)
 			goto exit;
 	}
 
 	if (uuid) {
-		ret = add_file(db, "/.super/uuid", uuid, strlen(uuid) + 1, &st);
+		ret = add_file(db, "/.super/uuid", uuid, strlen(uuid) + 1,
+			       &st, 0);
 		if (ret)
 			goto exit;
 	}
