@@ -124,8 +124,6 @@ static int getflags_cb(void *data, int argc, char **argv, char **colname);
 static int lost_found(sqlite3 *db);
 static int add_file(sqlite3 *db, const char *path, const void *data,
 		    size_t datasize, const struct stat *st, int flags);
-static int add_directory(sqlite3 *db, const char *path, const struct stat *st,
-			 int flags);
 static int __stat(sqlite3 *db, const char *path, struct stat *st);
 
 static int __chmod(sqlite3 *db, const char *path, mode_t mode);
@@ -591,40 +589,6 @@ static int add_file(sqlite3 *db, const char *path, const void *data,
 
 exit:
 	return ret;
-}
-
-static int add_directory(sqlite3 *db, const char *path, const struct stat *st,
-			 int flags)
-{
-	char sql[BUFSIZ], parent[PATH_MAX];
-	char *e;
-
-	if (!db || !path || !st)
-		return -EINVAL;
-
-	strncpy(parent, path, sizeof(parent));
-	dirname(parent);
-
-	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, flags, "
-			"st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
-			"st_size, st_blksize, st_blocks, st_atim_sec, "
-			"st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
-			"st_ctim_nsec) "
-			"VALUES(\"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, %lu, "
-			"%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-			path, parent, flags, st->st_dev, st->st_mode,
-			st->st_nlink, st->st_uid, st->st_gid, st->st_rdev,
-			st->st_size, st->st_blksize, st->st_blocks,
-			st->st_atim.tv_sec, st->st_atim.tv_nsec,
-			st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
-			st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
-	return 0;
 }
 
 static int __stat(sqlite3 *db, const char *path, struct stat *st)
@@ -1131,8 +1095,10 @@ static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
 
 static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 {
+	char sql[BUFSIZ], parent[PATH_MAX];
 	struct timespec now;
 	struct stat st;
+	char *e;
 
 	if (!db || !path)
 		return -EINVAL;
@@ -1154,7 +1120,29 @@ static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return add_directory(db, path, &st, 0);
+	strncpy(parent, path, sizeof(parent));
+	dirname(parent);
+
+	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, flags, "
+			"st_dev, st_mode, st_nlink, st_uid, st_gid, st_rdev, "
+			"st_size, st_blksize, st_blocks, st_atim_sec, "
+			"st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
+			"st_ctim_nsec) "
+			"VALUES(\"%s\", \"%s\", %i, %lu, %u, %lu, %u, %u, %lu, "
+			"%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
+			path, parent, 0, st.st_dev, st.st_mode, st.st_nlink,
+			st.st_uid, st.st_gid, st.st_rdev, st.st_size,
+			st.st_blksize, st.st_blocks, st.st_atim.tv_sec,
+			st.st_atim.tv_nsec, st.st_mtim.tv_sec,
+			st.st_mtim.tv_nsec, st.st_ctim.tv_sec,
+			st.st_ctim.tv_nsec);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 static int __rmdir(sqlite3 *db, const char *path)
