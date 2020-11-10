@@ -125,7 +125,6 @@ static int lost_found(sqlite3 *db);
 static int __mkfile(sqlite3 *db, const char *path, const void *data,
 		    size_t datasize, const struct stat *st, int flags);
 static int __stat(sqlite3 *db, const char *path, struct stat *st);
-
 static int __chmod(sqlite3 *db, const char *path, mode_t mode);
 static int __chown(sqlite3 *db, const char *path, uid_t uid, gid_t gid);
 static int __utimens(sqlite3 *db, const char *path,
