@@ -1046,10 +1046,7 @@ static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	if (add_file(db, path, NULL, 0, &st))
-		return -EIO;
-
-	return 0;
+	return add_file(db, path, NULL, 0, &st);
 }
 
 static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
