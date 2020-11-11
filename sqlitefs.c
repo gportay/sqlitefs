@@ -124,6 +124,7 @@ static int getflags_cb(void *data, int argc, char **argv, char **colname);
 static int lost_found(sqlite3 *db);
 static int __mkblob(sqlite3 *db, const void *data, size_t datasize);
 static int __rmblob(sqlite3 *db, int blob);
+static ssize_t __blobread(sqlite3 *db, int blob, char *buf, size_t bufsize);
 static ssize_t __blobwrite(sqlite3 *db, int blob, const char *buf,
 			   size_t bufsize);
 static int __mkfile(sqlite3 *db, const char *path, const struct stat *st,
@@ -442,6 +443,59 @@ fprintf(stderr, "%s:%i DELETE blob: %i\n", __func__, __LINE__, blob);
 	}
 
 	return 0;
+}
+
+static ssize_t __blobread(sqlite3 *db, int blob, char *buf, size_t bufsize)
+{
+	char sql[BUFSIZ];
+	ssize_t size = 0;
+
+	if (!db || !buf)
+		return -EINVAL;
+
+	__snprintf(sql, "SELECT data "
+			"FROM blobs "
+			"WHERE id = %i;",
+			blob);
+
+	for (;;) {
+		const unsigned char *data;
+		sqlite3_stmt *stmt;
+		int datasize;
+
+		if (sqlite3_prepare(db, sql, -1, &stmt, 0)) {
+			__sqlite3_perror("sqlite3_prepare", db);
+			goto error;
+		}
+
+		if (sqlite3_step(stmt) != SQLITE_ROW) {
+			__sqlite3_perror("sqlite3_step", db);
+			goto error;
+		}
+
+		data = sqlite3_column_blob(stmt, 0);
+		datasize = sqlite3_column_bytes(stmt, 0);
+
+		if (datasize < 0) {
+			size = 0;
+			buf[0] = 0;
+		} else {
+			size = __min((size_t)size, bufsize);
+			memcpy(buf, data, size);
+		}
+
+		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
+			__sqlite3_perror("sqlite3_step", db);
+			continue;
+		}
+
+		break;
+	}
+
+	return 0;
+
+error:
+	return -EIO;
 }
 
 static ssize_t __blobwrite(sqlite3 *db, int blob, const char *buf,
