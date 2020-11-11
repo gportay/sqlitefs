@@ -486,6 +486,8 @@ else
 fi
 echo
 
+echo "SELECT st_nlink FROM files WHERE path=\"/.super/label\";" | sqlite3 fs.db
+
 run "Remove link"
 if rm mountpoint/link &&
    ! test -e mountpoint/link
@@ -499,6 +501,7 @@ echo
 stat mountpoint/.super/label
 touch mountpoint/.super/label
 stat mountpoint/.super/label
+echo "SELECT st_nlink FROM files WHERE path=\"/.super/label\";" | sqlite3 fs.db
 
 run "List hard links"
 if ls -l mountpoint/.super/label | tee /dev/stderr |
@@ -509,6 +512,8 @@ else
 	ko
 fi
 echo
+
+echo "SELECT st_nlink FROM files WHERE path=\"/.super/label\";" | sqlite3 fs.db
 
 run "Make symbolic link"
 if ln -sf .Trash mountpoint/symlink &&
