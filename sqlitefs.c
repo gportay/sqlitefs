@@ -122,8 +122,16 @@ static int __readdir(sqlite3 *db, const char *path, void *buffer,
 static int orphan_cb(void *data, int argc, char **argv, char **colname);
 static int getflags_cb(void *data, int argc, char **argv, char **colname);
 static int lost_found(sqlite3 *db);
-static int __mkfile(sqlite3 *db, const char *path, const void *data,
-		    size_t datasize, const struct stat *st, int flags);
+static int __mkblob(sqlite3 *db, const void *data, size_t datasize);
+static int __rmblob(sqlite3 *db, int blob);
+static ssize_t __blobwrite(sqlite3 *db, int blob, const char *buf,
+			   size_t bufsize);
+static int __mkfile(sqlite3 *db, const char *path, const struct stat *st,
+		    int blob, int flags);
+static int __rmfile(sqlite3 *db, const char *path);
+static int __mkfile_blob(sqlite3 *db, const char *path, const void *data,
+			 size_t datasize, const struct stat *st, int flags);
+static int __rmfile_blob(sqlite3 *db, const char *path, int blob);
 static int __stat(sqlite3 *db, const char *path, struct stat *st);
 static int __chmod(sqlite3 *db, const char *path, mode_t mode);
 static int __chown(sqlite3 *db, const char *path, uid_t uid, gid_t gid);
@@ -320,6 +328,170 @@ static int fprintgetfattr(FILE *f, const char *path, const char *name,
 			  const char *value)
 {
 	return fprintf(f, "# file: %s\n%s=\"%s\"\n", path, name, value);
+}
+
+static int __getint_cb(void *data, int argc, char **argv, char **colname)
+{
+	int *ptr = (int *)data;
+	(void)argc;
+	(void)colname;
+
+	if (ptr)
+		*ptr = __strtoi(argv[0], NULL, 0);
+
+	return SQLITE_OK;
+}
+
+static int __blob(sqlite3 *db, const char *path)
+{
+	int ret = -1;
+	char sql[BUFSIZ];
+	char *e;
+
+	__snprintf(sql, "SELECT blob "
+			"FROM files "
+			"WHERE (path == \"%s\");",
+			path);
+	if (sqlite3_exec(db, sql, __getint_cb, &ret, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return ret;
+}
+
+static int __nlink(sqlite3 *db, int blob)
+{
+	int ret = -ENOENT;
+	char sql[BUFSIZ];
+	char *e;
+
+	__snprintf(sql, "SELECT COUNT(*) "
+			"FROM files "
+			"WHERE (blob == %i);",
+			blob);
+	if (sqlite3_exec(db, sql, __getint_cb, &ret, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return ret;
+}
+
+static int __mkblob(sqlite3 *db, const void *data, size_t datasize)
+{
+	char sql[BUFSIZ];
+
+	if (!db)
+		return -EINVAL;
+
+	__snprintf(sql, "INSERT INTO blobs(data) VALUES(?);");
+
+	for (;;) {
+		sqlite3_stmt *stmt;
+
+		if (sqlite3_prepare(db, sql, -1, &stmt, 0) != SQLITE_OK) {
+			__sqlite3_perror("sqlite3_prepare", db);
+			goto error;
+		}
+
+		if (sqlite3_bind_blob(stmt, 1, data, datasize, SQLITE_STATIC)) {
+			__sqlite3_perror("sqlite3_bind_blob", db);
+			goto error;
+		}
+
+		if (sqlite3_step(stmt) != SQLITE_DONE) {
+			__sqlite3_perror("sqlite3_step", db);
+			goto error;
+		}
+
+		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
+			__sqlite3_perror("sqlite3_step", db);
+			continue;
+		}
+
+		return sqlite3_last_insert_rowid(db);
+	}
+
+error:
+	return -EIO;
+}
+
+static int __rmblob(sqlite3 *db, int blob)
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	if (blob == -1)
+		return -EINVAL;
+
+	__snprintf(sql, "DELETE FROM blobs "
+			"WHERE id=%i;",
+			blob);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static ssize_t __blobwrite(sqlite3 *db, int blob, const char *buf,
+			   size_t bufsize)
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	if (blob == -1)
+		return -EINVAL;
+
+	__snprintf(sql, "REPLACE INTO blobs(id, data) "
+			"VALUES(%i, ?);",
+			blob);
+
+	for (;;) {
+		sqlite3_stmt *stmt;
+
+		if (sqlite3_prepare(db, sql, -1, &stmt, 0) != SQLITE_OK) {
+			__sqlite3_perror("sqlite3_prepare", db);
+			goto error;
+		}
+
+		if (sqlite3_bind_blob(stmt, 1, buf, bufsize, SQLITE_STATIC)) {
+			__sqlite3_perror("sqlite3_bind_blob", db);
+			goto error;
+		}
+
+		if (sqlite3_step(stmt) != SQLITE_DONE) {
+			__sqlite3_perror("sqlite3_step", db);
+			goto error;
+		}
+
+		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
+			__sqlite3_perror("sqlite3_step", db);
+			continue;
+		}
+
+		break;
+	}
+
+	__snprintf(sql, "UPDATE files SET "
+				"st_size=%lu "
+			"WHERE blob=%i;",
+			bufsize, blob);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto error;
+	}
+
+	return 0;
+
+error:
+	return -EIO;
 }
 
 struct getattr_data {
@@ -533,11 +705,11 @@ static int lost_found(sqlite3 *db)
 	return data.count;
 }
 
-static int __mkfile(sqlite3 *db, const char *path, const void *data,
-		    size_t datasize, const struct stat *st, int flags)
+static int __mkfile(sqlite3 *db, const char *path, const struct stat *st,
+		    int blob, int flags)
 {
 	char sql[BUFSIZ], parent[PATH_MAX];
-	int ret = -EIO;
+	char *e;
 
 	if (!db || !path || !st)
 		return -EINVAL;
@@ -545,51 +717,116 @@ static int __mkfile(sqlite3 *db, const char *path, const void *data,
 	strncpy(parent, path, sizeof(parent));
 	dirname(parent);
 
-	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, data, "
+	__snprintf(sql, "INSERT OR REPLACE INTO files(path, parent, blob, "
 			"flags, st_dev, st_mode, st_nlink, st_uid, st_gid, "
 			"st_rdev, st_size, st_blksize, st_blocks, st_atim_sec, "
 			"st_atim_nsec, st_mtim_sec, st_mtim_nsec, st_ctim_sec, "
 			"st_ctim_nsec) "
-			"VALUES(\"%s\", \"%s\", ?, %i, %lu, %u, %lu, %u, %u, "
+			"VALUES(\"%s\", \"%s\", %i, %i, %lu, %u, %lu, %u, %u, "
 			"%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu);",
-			path, parent, flags, st->st_dev, st->st_mode,
+			path, parent, blob, flags, st->st_dev, st->st_mode,
 			st->st_nlink, st->st_uid, st->st_gid, st->st_rdev,
-			datasize, st->st_blksize, st->st_blocks,
+			st->st_size, st->st_blksize, st->st_blocks,
 			st->st_atim.tv_sec, st->st_atim.tv_nsec,
 			st->st_mtim.tv_sec, st->st_mtim.tv_nsec,
 			st->st_ctim.tv_sec, st->st_ctim.tv_nsec);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
 
-	for (;;) {
-		sqlite3_stmt *stmt;
-
-		if (sqlite3_prepare(db, sql, -1, &stmt, 0) != SQLITE_OK) {
-			__sqlite3_perror("sqlite3_prepare", db);
-			goto exit;
+	if (blob != -1) {
+		__snprintf(sql, "UPDATE files SET "
+					"st_nlink=%lu "
+				"WHERE blob=%i;",
+				st->st_nlink + 1, blob);
+		if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+			fprintf(stderr, "sqlite3_exec: %s\n", e);
+			sqlite3_free(e);
+			goto error;
 		}
+	}
 
-		if (data && datasize) {
-			if (sqlite3_bind_blob(stmt, 1, data, datasize, SQLITE_STATIC)) {
-				__sqlite3_perror("sqlite3_bind_blob", db);
-				goto exit;
+	return 0;
+
+error:
+	__rmfile(db, path);
+
+	return -EIO;
+}
+
+static int __rmfile(sqlite3 *db, const char *path)
+{
+	char sql[BUFSIZ];
+	char *e;
+
+	__snprintf(sql, "DELETE FROM files "
+			"WHERE path=\"%s\";",
+			path);
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int __mkfile_blob(sqlite3 *db, const char *path, const void *data,
+			 size_t datasize, const struct stat *st, int flags)
+{
+	int ret, blob = -1;
+
+	if (!db || !path || !st)
+		return -EINVAL;
+
+	if (data && datasize) {
+		blob = __mkblob(db, data, datasize);
+		if (blob < 0)
+			return blob;
+		((struct stat *)st)->st_size = datasize;
+	}
+
+	ret = __mkfile(db, path, st, blob, flags);
+	if (ret)
+		goto error;
+
+	return 0;
+
+error:
+	if (blob)
+		__rmblob(db, blob);
+
+	return ret;
+}
+
+static int __rmfile_blob(sqlite3 *db, const char *path, int blob)
+{
+	char sql[BUFSIZ];
+	int nlink;
+	char *e;
+
+	if (blob != -1) {
+		nlink = __nlink(db, blob);
+		if (nlink > 0) {
+			nlink--;
+			__snprintf(sql, "UPDATE files SET "
+						"st_nlink=%i "
+					"WHERE blob=%i;",
+					nlink, blob);
+			if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+				fprintf(stderr, "sqlite3_exec: %s\n", e);
+				sqlite3_free(e);
+				return -EIO;
 			}
 		}
 
-		if (sqlite3_step(stmt) != SQLITE_DONE) {
-			__sqlite3_perror("sqlite3_step", db);
-			goto exit;
-		}
-
-		if (sqlite3_finalize(stmt) == SQLITE_SCHEMA) {
-			__sqlite3_perror("sqlite3_step", db);
-			continue;
-		}
-
-		ret = 0;
-		break;
+		if (nlink == 0)
+			__rmblob(db, blob);
 	}
 
-exit:
-	return ret;
+	return __rmfile(db, path);
 }
 
 static int __stat(sqlite3 *db, const char *path, struct stat *st)
@@ -757,8 +994,8 @@ static ssize_t __pread(sqlite3 *db, const char *path, char *buf,
 		return -EINVAL;
 
 	__snprintf(sql, "SELECT data "
-			"FROM files "
-			"WHERE (path == \"%s\");",
+			"FROM blobs, files "
+			"WHERE (path == \"%s\" AND blobs.id = files.blob);",
 			path);
 
 	for (;;) {
@@ -824,10 +1061,10 @@ static ssize_t __pwrite(sqlite3 *db, const char *path, const char *buf,
 static ssize_t __pwrite_mutable(sqlite3 *db, const char *path, const char *buf,
 				size_t bufsize, off_t offset)
 {
-	ssize_t datasize = 0;
+	int ret, blob, flags;
 	void *data = NULL;
+	ssize_t datasize;
 	struct stat st;
-	int ret, flags;
 
 	if (!db || !buf)
 		return -EINVAL;
@@ -865,16 +1102,19 @@ static ssize_t __pwrite_mutable(sqlite3 *db, const char *path, const char *buf,
 
 		memcpy(data + offset, buf, bufsize);
 
-		ret = __mkfile(db, path, data, datasize, &st, flags);
-		if (ret)
-			goto exit;
-
+		blob = __blob(db, path);
+		if (blob == -1)
+			ret = __mkfile_blob(db, path, data, datasize, &st, flags);
+		else
+			ret = __blobwrite(db, __blob(db, path), data, datasize);
 		goto exit;
 	}
 
-	ret = __mkfile(db, path, buf, bufsize, &st, flags);
-	if (ret)
-		return ret;
+	blob = __blob(db, path);
+	if (blob == -1)
+		ret = __mkfile_blob(db, path, buf, bufsize, &st, flags);
+	else
+		ret = __blobwrite(db, __blob(db, path), buf, bufsize);
 
 exit:
 	if (data)
@@ -974,7 +1214,7 @@ static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 	st.st_dev = rdev;
 	/* Ignored st.st_ino = 0; */
 	st.st_mode = mode;
-	st.st_nlink = 1;
+	st.st_nlink = 0;
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
@@ -982,7 +1222,7 @@ static int __mknod(sqlite3 *db, const char *path, mode_t mode, dev_t rdev)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return __mkfile(db, path, NULL, 0, &st, 0);
+	return __mkfile_blob(db, path, NULL, 0, &st, 0);
 }
 
 static int __rename(sqlite3 *db, const char *oldpath, const char *newpath)
@@ -1027,15 +1267,6 @@ static int __unlink(sqlite3 *db, const char *path)
 	if (__isimmutable(db, path))
 		return -EPERM;
 
-	__snprintf(sql, "DELETE FROM files "
-			"WHERE path=\"%s\";",
-			path);
-	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
-		fprintf(stderr, "sqlite3_exec: %s\n", e);
-		sqlite3_free(e);
-		return -EIO;
-	}
-
 	__snprintf(sql, "DELETE FROM xattrs "
 			"WHERE path=\"%s\";",
 			path);
@@ -1045,7 +1276,35 @@ static int __unlink(sqlite3 *db, const char *path)
 		return -EIO;
 	}
 
-	return 0;
+	return __rmfile_blob(db, path, __blob(db, path));
+}
+
+static int __link(sqlite3 *db, const char *path1, const char *path2)
+{
+	struct stat st;
+	int ret;
+
+	if (!db || !path1 || !path2)
+		return -EINVAL;
+
+	ret = __stat(db, path2, &st);
+	if (ret && ret != -ENOENT)
+		return ret;
+	if (ret == 0)
+		return -EEXIST;
+
+	ret = __stat(db, path1, &st);
+	if (ret)
+		return ret;
+
+	if (S_ISDIR(st.st_mode))
+		return -EPERM;
+
+	/* TODO: readlink(path1) */
+	if (S_ISLNK(st.st_mode))
+		return -EIO;
+
+	return __mkfile(db, path2, &st, __blob(db, path1), 0);
 }
 
 static int __symlink(sqlite3 *db, const char *linkname, const char *path)
@@ -1065,7 +1324,7 @@ static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 	/* Ignored st.st_dev = 0; */
 	/* Ignored st.st_ino = 0; */
 	st.st_mode = S_IFLNK | ACCESSPERMS;
-	st.st_nlink = 1;
+	st.st_nlink = 0;
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
@@ -1073,7 +1332,7 @@ static int __symlink(sqlite3 *db, const char *linkname, const char *path)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return __mkfile(db, path, linkname, strlen(linkname), &st, 0);
+	return __mkfile_blob(db, path, linkname, strlen(linkname), &st, 0);
 }
 
 static int __readlink(sqlite3 *db, const char *path, char *buf, size_t len)
@@ -1119,7 +1378,7 @@ static int __mkdir(sqlite3 *db, const char *path, mode_t mode)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	return __mkfile(db, path, NULL, 0, &st, 0); 
+	return __mkfile_blob(db, path, NULL, 0, &st, 0); 
 }
 
 static int __rmdir(sqlite3 *db, const char *path)
@@ -1184,7 +1443,7 @@ static int __mksuper(sqlite3 *db, const char *label, const char *uuid)
 	/* Ignored st.st_dev = 0; */
 	/* Ignored st.st_ino = 0; */
 	st.st_mode = S_IFREG | ACCESSPERMS;
-	st.st_nlink = 1;
+	st.st_nlink = 0;
 	st.st_uid = getuid();
 	st.st_gid = getgid();
 	/* Ignored st.st_blksize = 0; */
@@ -1192,20 +1451,20 @@ static int __mksuper(sqlite3 *db, const char *label, const char *uuid)
 	st.st_mtim = now;
 	st.st_ctim = now;
 
-	ret = __mkfile(db, "/.super/version", "0", strlen("0") + 1, &st,
+	ret = __mkfile_blob(db, "/.super/version", "0", strlen("0") + 1, &st,
 		       FS_IMMUTABLE_FL);
 	if (ret)
 		goto exit;
 
 	if (label) {
-		ret = __mkfile(db, "/.super/label", label, strlen(label) + 1,
+		ret = __mkfile_blob(db, "/.super/label", label, strlen(label) + 1,
 			       &st, FS_IMMUTABLE_FL);
 		if (ret)
 			goto exit;
 	}
 
 	if (uuid) {
-		ret = __mkfile(db, "/.super/uuid", uuid, strlen(uuid) + 1,
+		ret = __mkfile_blob(db, "/.super/uuid", uuid, strlen(uuid) + 1,
 			       &st, FS_IMMUTABLE_FL);
 		if (ret)
 			goto exit;
@@ -1524,7 +1783,7 @@ static int mkfs(const char *path, const char *label)
 	__snprintf(sql, "CREATE TABLE IF NOT EXISTS files("
 				"path TEXT NOT NULL PRIMARY KEY, "
 				"parent TEXT NOT NULL, "
-				"data BLOB, "
+				"blob INT(8), "
 				"flags INT(8), "
 				"st_dev INT(8), "
 				"st_mode INT(4), "
@@ -1547,11 +1806,21 @@ static int mkfs(const char *path, const char *label)
 		goto error;
 	}
 
+	__snprintf(sql, "CREATE TABLE IF NOT EXISTS blobs("
+				"id INTEGER PRIMARY KEY, "
+				"data BLOB);");
+	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
+		fprintf(stderr, "sqlite3_exec: %s\n", e);
+		sqlite3_free(e);
+		goto error;
+	}
+
 	__snprintf(sql, "CREATE TABLE IF NOT EXISTS xattrs("
 				"path TEXT NOT NULL, "
 				"name TEXT NOT NULL, "
 				"value TEXT NOT NULL, "
-				"PRIMARY KEY (path, name));");
+				"PRIMARY KEY (path, name)) "
+			"WITHOUT ROWID;");
 	if (sqlite3_exec(db, sql, NULL, 0, &e) != SQLITE_OK) {
 		fprintf(stderr, "sqlite3_exec: %s\n", e);
 		sqlite3_free(e);
@@ -1747,7 +2016,14 @@ static int sqlitefs_rename(const char *oldpath, const char *newpath,
 }
 
 /** Create a hard link to a file */
-/* int (*link) (const char *, const char *); */
+static int sqlitefs_link(const char *path1, const char *path2)
+{
+	sqlite3 *db = fuse_get_context()->private_data;
+
+	verbose("%s(path1: '%s', path2: '%s')\n", __func__, path1, path2);
+
+	return __link(db, path1, path2);
+}
 
 /** Change the permission bits of a file
  *
@@ -2297,7 +2573,7 @@ static struct fuse_operations operations = {
 	.rmdir = sqlitefs_rmdir,
 	.symlink = sqlitefs_symlink,
 	.rename = sqlitefs_rename,
-	/* .link */
+	.link = sqlitefs_link,
 	.chmod = sqlitefs_chmod,
 	.chown = sqlitefs_chown,
 	.truncate = sqlitefs_truncate,
