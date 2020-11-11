@@ -454,6 +454,16 @@ else
 fi
 echo
 
+run "List hard links"
+if ls -l mountpoint/.super/label | tee /dev/stderr |
+   grep -q "\-rwxrwxrwx 1 $USER $USER 3 .* mountpoint/.super/label\$"
+then
+	ok
+else
+	ko
+fi
+echo
+
 run "Make link"
 if ln mountpoint/.super/label mountpoint/link &&
    test -e mountpoint/link
@@ -469,6 +479,30 @@ if ls -l mountpoint/link | tee /dev/stderr |
    grep -q "\-rwxrwxrwx 2 $USER $USER 3 .* mountpoint/link\$" &&
    ls -l mountpoint/.super/label | tee /dev/stderr |
    grep -q "\-rwxrwxrwx 2 $USER $USER 3 .* mountpoint/.super/label\$"
+then
+	ok
+else
+	ko
+fi
+echo
+
+run "Remove link"
+if rm mountpoint/link &&
+   ! test -e mountpoint/link
+then
+	ok
+else
+	ko
+fi
+echo
+
+stat mountpoint/.super/label
+touch mountpoint/.super/label
+stat mountpoint/.super/label
+
+run "List hard links"
+if ls -l mountpoint/.super/label | tee /dev/stderr |
+   grep -q "\-rwxrwxrwx 1 $USER $USER 3 .* mountpoint/.super/label\$"
 then
 	ok
 else

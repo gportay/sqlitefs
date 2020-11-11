@@ -427,6 +427,11 @@ static int __rmblob(sqlite3 *db, int blob)
 	if (blob == -1)
 		return -EINVAL;
 
+fprintf(stderr, "%s:%i DELETE blob: %i\n", __func__, __LINE__, blob);
+fprintf(stderr, "%s:%i DELETE blob: %i\n", __func__, __LINE__, blob);
+fprintf(stderr, "%s:%i DELETE blob: %i\n", __func__, __LINE__, blob);
+fprintf(stderr, "%s:%i DELETE blob: %i\n", __func__, __LINE__, blob);
+fprintf(stderr, "%s:%i DELETE blob: %i\n", __func__, __LINE__, blob);
 	__snprintf(sql, "DELETE FROM blobs "
 			"WHERE id=%i;",
 			blob);
@@ -761,6 +766,11 @@ static int __rmfile(sqlite3 *db, const char *path)
 	char sql[BUFSIZ];
 	char *e;
 
+fprintf(stderr, "%s:%i DELETE path: %s\n", __func__, __LINE__, path);
+fprintf(stderr, "%s:%i DELETE path: %s\n", __func__, __LINE__, path);
+fprintf(stderr, "%s:%i DELETE path: %s\n", __func__, __LINE__, path);
+fprintf(stderr, "%s:%i DELETE path: %s\n", __func__, __LINE__, path);
+fprintf(stderr, "%s:%i DELETE path: %s\n", __func__, __LINE__, path);
 	__snprintf(sql, "DELETE FROM files "
 			"WHERE path=\"%s\";",
 			path);
@@ -811,6 +821,12 @@ static int __rmfile_blob(sqlite3 *db, const char *path, int blob)
 		nlink = __nlink(db, blob);
 		if (nlink > 0) {
 			nlink--;
+fprintf(stderr, "%s:%i blob: %i\n", __func__, __LINE__, blob);
+fprintf(stderr, "%s:%i UPDATE blob: %i, st_nlink: %i\n", __func__, __LINE__, blob, nlink);
+fprintf(stderr, "%s:%i UPDATE blob: %i, st_nlink: %i\n", __func__, __LINE__, blob, nlink);
+fprintf(stderr, "%s:%i UPDATE blob: %i, st_nlink: %i\n", __func__, __LINE__, blob, nlink);
+fprintf(stderr, "%s:%i UPDATE blob: %i, st_nlink: %i\n", __func__, __LINE__, blob, nlink);
+fprintf(stderr, "%s:%i UPDATE blob: %i, st_nlink: %i\n", __func__, __LINE__, blob, nlink);
 			__snprintf(sql, "UPDATE files SET "
 						"st_nlink=%i "
 					"WHERE blob=%i;",
